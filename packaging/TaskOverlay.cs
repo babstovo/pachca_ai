@@ -331,6 +331,11 @@ internal sealed partial class PachcaWindow
             Post(new { type = "context", generation, available = app.taskProfile != null });
         }
 
+        public void ApplyStatuses(object boardUrl, object selected)
+        {
+            Post(new { type = "statuses", generation, boardUrl, selected });
+        }
+
         protected override async Task Receive(string json)
         {
             var data = app.json.Deserialize<Dictionary<string, object>>(json);
@@ -369,8 +374,7 @@ internal sealed partial class PachcaWindow
             }
             if (action != "list") return;
             try {
-                var result = await app.Request("desktop-task-board", new { profile_id = app.taskProfile,
-                    offset = Get(data, "offset"), account_id = Get(data, "account_id"), closed = false, overlay = true, standalone = app.settingsProfile == null });
+                var result = await app.Request("desktop-overlay-board", new { profile_id = app.taskProfile });
                 if (requested == generation) Post(new { type = "page", generation, result });
             } catch (Exception ex) {
                 if (requested == generation) Post(new { type = "page", generation, error = ex.Message });

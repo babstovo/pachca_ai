@@ -7,7 +7,7 @@ import { clientBinding, configureClient, clientEnabled } from './mcp-client.mjs'
 import { normalizeCommunicationProfile } from './communication-profile.mjs';
 import { configuredBoard } from './workspace-settings.mjs';
 import { assignedTaskAction, assignedTaskBoard, assignedTaskWorkflow, configuredTaskProfile, hasOpenProjectKey,
-  overlayStatusSettings, removeOpenProjectKey, saveOpenProjectKey, updateAssignedTaskStatus } from './openproject.mjs';
+  overlayStatusSettings, overlayTaskBoard, removeOpenProjectKey, saveOpenProjectKey, updateAssignedTaskStatus } from './openproject.mjs';
 import { readProjects, saveProjects } from './projects.mjs';
 import { clientDataDir } from './session.mjs';
 
@@ -30,6 +30,11 @@ export async function desktop(command) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  if (command === 'desktop-overlay-board') {
+    if (!Number.isSafeInteger(input.profile_id) || input.profile_id <= 0) throw Error('Выберите пространство Пачки для доски задач.');
+    console.log(JSON.stringify(await overlayTaskBoard(input.profile_id)));
+    return;
+  }
   if (command === 'desktop-overlay-statuses') {
     console.log(JSON.stringify(await overlayStatusSettings(input.profile_id, input)));
     return;

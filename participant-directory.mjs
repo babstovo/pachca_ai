@@ -82,7 +82,7 @@ export function participantDirectory(file, owner) {
   const known = stmt('SELECT * FROM room WHERE id=?');
   function register(user) {
     if (!user || !positive(user.id) || user.id === owner || !humanAuthor(user)) return;
-    const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.nickname || String(user.id);
+    const name = user.display_name || [user.first_name || user.name, user.last_name].filter(Boolean).join(' ') || user.nickname || String(user.id);
     const position = isProjectManager(user) ? 'Проджект-менеджер' : [user.title, user.position, user.job_title].find(v => typeof v === 'string' && v.trim()) || '';
     putPerson.run(user.id, name.slice(0, 180), position.slice(0, 300));
   }
@@ -239,14 +239,22 @@ export async function findParticipants(directory, get, query) {
     if (ids.length) for (const user of (await get('/users', { ids })).data) directory.register(user);
     return ids;
   }
+  const limit = 30;
   const cursors = new Set();
+  const receivedIds = new Set();
   let cursor;
   do {
-    const page = await get('/users', { limit: 50, cursor });
-    if (!Array.isArray(page.data)) throw new Error('Введите имя, чтобы найти участника в Пачке.');
-    for (const user of page.data) directory.register(user);
-    cursor = page.meta?.paginate?.next_page;
-    if (!cursor || cursors.has(cursor)) break;
+    const page = await get('/employees/search', { limit, cursor });
+    if (!Array.isArray(page?.data)) throw new Error('Пачка не вернула список сотрудников.');
+    for (const user of page.data) {
+      directory.register(user);
+      if (positive(user?.id)) receivedIds.add(user.id);
+    }
+    // Pachca can return a next_page cursor even on the last, short page.
+    if (page.data.length < limit || (Number.isSafeInteger(page.meta?.total) && receivedIds.size >= page.meta.total)) break;
+    cursor = page.meta?.next_page;
+    if (!cursor) break;
+    if (cursors.has(cursor)) throw new Error('Пачка вернула повторную страницу списка сотрудников.');
     cursors.add(cursor);
   } while (true);
   return [];

@@ -27,10 +27,21 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 .folder-agent{grid-column:1/-1;display:flex;gap:8px 14px;flex-wrap:wrap}.folder-agent label{display:grid;gap:3px;color:var(--muted);font-size:13px;min-width:0;flex:1 1 165px}.folder-agent select{min-width:0;max-width:100%;color:var(--text)}
 </style>
 <style>#statusChoices{display:grid;gap:6px;max-height:44vh;overflow:auto;margin:12px 0}#statusDialog label{display:flex;align-items:center;gap:7px}</style>
-</head><body>
+<style>
+main:has(#participants:not([hidden])){display:flex;flex-direction:column;min-height:0;padding:0}
+#participants{flex:1;min-height:0;display:flex;flex-direction:column}
+#participantsOffline{padding:18px}#participantPanel[hidden]{display:none}
+main:has(#participants:not([hidden])) #notice:empty{display:none}
+@media(max-width:620px){
+  body:has(#participants:not([hidden])){grid-template-areas:"menu content" "disconnect content";grid-template-columns:136px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  body:has(#participants:not([hidden])) nav{display:grid}
+  body:has(#participants:not([hidden])) aside{padding:10px 4px;overflow:auto}
+}
+</style></head><body>
 <aside><h1>Настройки агента</h1><nav aria-label="Разделы настроек">
 <button data-page="replies" aria-current="page">Ответы</button>
 <button data-page="profile">Рассказать о себе</button>
+<button data-page="participants">Карточки собеседников</button>
 <button data-page="projects">Проекты</button>
 <button data-page="tasks">Доска задач</button>
 </nav><div class="connection"><p id="connection" role="status"><span class="dot"></span><span id="codexStatus">Проверяем подключение…</span></p></div></aside>
@@ -44,14 +55,15 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 <label class="row" for="model">Модель<select id="model" disabled><option>По умолчанию</option></select></label>
 <label class="row" for="effort">Уровень рассуждения<select id="effort" disabled><option>Авто</option></select></label>
 </div>
-<h3>Карточки собеседников</h3><p class="hint">Роль, стиль общения и предпочтения каждого участника.</p>
-<button id="participants" class="link" disabled>Участники и стиль ответов ›</button>
 </section>
 <section id="profile" hidden><h2>Рассказать о себе</h2>
 <label class="field">О себе и своей работе<textarea id="description" maxlength="4000" rows="2" disabled></textarea></label>
 <label class="field">Стиль общения<textarea id="style" maxlength="2000" rows="2" disabled></textarea></label>
 <label class="field">Правила ответов<textarea id="rules" maxlength="4000" rows="5" disabled></textarea></label>
 <div class="actions"><button id="saveProfile" class="primary" disabled>Сохранить</button><button id="reset" disabled>Сбросить по умолчанию</button><button id="cancelProfile" disabled>Отменить правки</button></div></section>
+<section id="participants" aria-label="Карточки собеседников" hidden>
+<p id="participantsOffline" class="hint">Подключитесь к Пачке, чтобы открыть карточки собеседников.</p>
+<div id="participantPanel"></div></section>
 <section id="projects" hidden><h2>Проекты</h2>
 <label class="row"><span><strong>Доска OpenProject</strong><br><span class="hint">Использовать доску OpenProject для ответов по задачам.</span></span><input id="board" class="switch" type="checkbox" role="switch" aria-label="Доска OpenProject" disabled></label>
 <label class="row"><span><strong>Автосоздание чатов задач</strong><br><span class="hint">Передавать ТЗ и вложения в выбранные проекты Codex. Для начала работы откройте чат задачи и напишите «Начинай».</span></span><input id="autoTaskWork" class="switch" type="checkbox" role="switch" aria-label="Автосоздание чатов задач" disabled></label>
@@ -89,11 +101,12 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
-const pages = ['replies','profile','projects','tasks'];
+const pages = ['replies','profile','participants','projects','tasks'];
 const fields = ['description','style','rules'];
 const levels = {none:'Без рассуждения',minimal:'Минимальный',low:'Лёгкий',medium:'Средний',high:'Высокий',xhigh:'Очень высокий',max:'Максимальный',ultra:'Ультра'};
 const data = {}, loading = new Set(), errors = {}, pending = new Map(), notes = {};
 let state = {}, page = 'replies', seq = 0, working = false, dirtyProfile = false, dirtyProjects = false, folders = [];
+let participantMarkup, roster, dirtyParticipant = false;
 let pendingModel,sessionVersion=0,clientChosen=false;
 let folderDescriptions = {}, folderAgents = {}, folderProjects = {};
 let pickerFolder, pickerRevision = 0;
@@ -117,7 +130,7 @@ function trackChanges() {
         folders.some(path => (folderDescriptions[path] || '') !== (data.projects.folderDescriptions?.[path] || '') ||
           ['id','name'].some(key => folderProjects[path]?.[key] !== data.projects.folderProjects?.[path]?.[key]) ||
           ['model','effort'].some(key => (folderAgents[path]?.[key] || '') !== (data.projects.folderAgents?.[path]?.[key] || '')))));
-    send({action:'dirty',value:dirtyProfile || dirtyProjects});
+    send({action:'dirty',value:dirtyProfile || dirtyProjects || dirtyParticipant});
     controls();
 }
 function controls() {
@@ -133,7 +146,8 @@ function controls() {
     $('confirm').disabled = !enabled || state.generating;
     $('model').disabled = !available;
     $('effort').disabled = !available || $('effort').options.length < 2;
-    $('participants').disabled = !enabled;
+    $('participantsOffline').hidden = Boolean(state.online);
+    $('participantPanel').hidden = !state.online;
     for(const k of fields) $(k).disabled = !enabled || !data.profile;
     $('reset').disabled = !enabled || !data.profile;
     $('saveProfile').disabled = $('cancelProfile').disabled = !enabled || !dirtyProfile;
@@ -157,7 +171,7 @@ function controls() {
     $('clientHint').textContent=client==='custom'?'При подключении выберите JSON-файл с настройками серверов MCP. Модель выбирается в вашем клиенте.':'Модель для инструментов Пачки выбирается в GitHub Copilot.';
     $('agentButton').textContent=state.disconnecting?'Отключение…':state.connecting?'Подключение…':attached?'Отключить агента':'Подключить агента';
     $('agentButton').classList.toggle('connected',attached);
-    $('agentButton').disabled=working||changing||(client==='codex'&&(!state.codex||(!attached&&state.checking&&state.codex!=='ready')))||state.changed||state.generating||dirtyProfile||dirtyProjects;
+    $('agentButton').disabled=working||changing||(client==='codex'&&(!state.codex||(!attached&&state.checking&&state.codex!=='ready')))||state.changed||state.generating||dirtyProfile||dirtyProjects||dirtyParticipant;
     $('connection').classList.toggle('online',attached&&(state.online||state.cliLinked));
     const clientStatus=client==='codex'?'Codex · MCP подключён':client==='copilot'?'Copilot · MCP настроен':'MCP-клиент настроен';
     $('codexStatus').textContent=changing?'Меняем подключение…':state.cliLinked?'Codex · MCP через CLI':attached&&state.online?clientStatus:attached?'Связь с агентом прервана':'Агент отключён';
@@ -298,7 +312,182 @@ function openPicker(path) {
     $('projectPicker').showModal();
     void loadPicker();
 }
+function mountParticipants(host) {
+    const root=host.attachShadow({mode:'open'});
+    root.innerHTML=participantMarkup;
+    const $=id=>root.getElementById(id);
+    const keys=['portrait','style','approach','detail','role'], captions=['Психологический портрет по переписке','Манера общения','Как лучше отвечать','Технические подробности','Роль в проекте'];
+    const colors=['#63538e','#485d91','#8b4b68','#447775','#826039','#586f47'];
+    const checked=new Set();
+    let choosing=false;
+    let revision=-1,cardRevision=-1,busy=false,submitting=false;
+    let searchTimer,searchVersion=0,matches=new Set(),lookingUp=false;
+    let people=[],card=null,selected=0,editing=false,dirty=false,saving=false,loading=false,loaded=false,version=0,indexStatus='',discardAction;
+    function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
+    function setDirty(value){if(dirty!==value){dirty=value;if(host.isConnected){dirtyParticipant=value;trackChanges();}}}
+    function confirmLeave(action){
+      if(saving)return;
+      if(!dirty){action();return;}
+      discardAction=action;
+      if(!$('discard').open)$('discard').showModal();
+    }
+    $('stay').onclick=()=>$('discard').close();
+    $('leave').onclick=()=>{const action=discardAction;$('discard').close();setDirty(false);action();};
+    function avatar(el,p){el.textContent=p.name.trim().split(/\s+/).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();el.style.backgroundColor=colors[p.id%colors.length];}
+    function visiblePeople(){
+      const query=$('search').value.trim().toLocaleLowerCase('ru');
+      return people.filter(p=>p.name.toLocaleLowerCase('ru').includes(query)||matches.has(p.id));
+    }
+    function controls(){
+      const visible=visiblePeople(),n=visible.filter(p=>checked.has(p.id)).length;
+      $('choose').disabled=submitting||busy;
+      $('choose').textContent=choosing?'Отмена':'Выбрать';
+      $('choose').setAttribute('aria-pressed',String(choosing));
+      $('select-all').hidden=$('depth-field').hidden=!choosing;
+      $('all').disabled=!visible.length;$('all').checked=!!n&&n===visible.length;$('all').indeterminate=n>0&&n<visible.length;
+      $('all-label').textContent=$('search').value.trim()?'Выбрать найденных':'Выбрать всех';
+      $('rescan').disabled=!loaded||submitting||busy||(choosing&&(!checked.size||!$('depth').validity.valid));
+      let caption='Обновить';
+      if(choosing)caption=checked.size?'Обновить выбранных ('+checked.size+')':'Обновить выбранных';
+      $('rescan').textContent=busy?'Обновление…':caption;
+    }
+    function list(){
+      const fragment=document.createDocumentFragment(),filtered=visiblePeople();
+      for(const p of filtered){
+        const row=document.createElement(choosing?'label':'button');row.className='person';
+        if(choosing){
+          const check=document.createElement('input');check.type='checkbox';check.checked=checked.has(p.id);
+          check.onchange=()=>{if(check.checked)checked.add(p.id);else checked.delete(p.id);controls();};
+          row.append(check);
+        }else{
+          row.setAttribute('aria-current',String(p.id===selected));
+          row.onclick=()=>{if(selected!==p.id||!card)confirmLeave(()=>select(p.id));};
+        }
+        const a=document.createElement('span');a.className='avatar';a.setAttribute('aria-hidden','true');avatar(a,p);
+        const n=document.createElement('span');n.textContent=p.name;row.append(a,n);fragment.append(row);
+      }
+      if(!filtered.length&&$('lookup-error').hidden){
+        const empty=document.createElement('p');empty.className='empty';
+        empty.textContent=!loaded||lookingUp?'Загружаем участников…':$('search').value.trim()?'Никого не нашли':'В этом пространстве нет других участников.';
+        fragment.append(empty);
+      }
+      $('people').replaceChildren(fragment);$('count').textContent=people.length;controls();
+    }
+    function draw(){
+      $('name').textContent=card?card.name:'Карточка участника';$('avatar').hidden=!card;
+      if(card)avatar($('avatar'),card);
+      $('blank').hidden=!!card;$('edit').hidden=!card||editing;$('cancel').hidden=$('save').hidden=!editing;
+      $('fields').replaceChildren();$('evidence').textContent=card?card.evidence:'';
+      $('analysis-note').hidden=!card;$('examples').replaceChildren();
+      if(!card)return;
+      if(card.method==='none'&&!editing&&!Object.values(card.overrides).some(Boolean)){
+        $('analysis-note').textContent='Портрета пока нет. Нажмите «Выбрать» над списком, отметьте участника и обновите карточку.';
+        return;
+      }
+      $('analysis-note').textContent=card.method==='codex'?'Разбор Codex · сообщений в выборке: '+card.messages+' из '+card.limit:'Краткая сводка. Для разбора Codex отметьте участника и обновите карточку.';
+      if(card.examples?.length&&!editing){
+        const section=document.createElement('section'),heading=document.createElement('label');
+        heading.textContent='Примеры из переписки';section.append(heading);
+        for(const example of card.examples){
+          const quote=document.createElement('blockquote'),source=document.createElement('small');
+          quote.textContent=example.text;source.textContent=example.source+' · №'+example.id;quote.append(source);section.append(quote);
+        }
+        $('examples').append(section);
+      }
+      keys.forEach((key,i)=>{
+        const section=document.createElement('section'),label=document.createElement('label');
+        label.textContent=captions[i];section.append(label);
+        if(editing){
+          label.htmlFor=key;
+          const hint=document.createElement('p');hint.className='hint';hint.id=key+'-hint';hint.textContent='По переписке: '+card.inferred[key];
+          const input=document.createElement('textarea');input.id=key;input.className='field';input.maxLength=1500;
+          input.placeholder='Использовать вывод из переписки';input.value=card.overrides[key];input.setAttribute('aria-describedby',hint.id);
+          input.oninput=()=>{setDirty(keys.some(k=>$(k).value!==card.overrides[k]));$('save').disabled=!dirty;};
+          section.append(hint,input);
+        }else{
+          const value=document.createElement('p');value.className='value';value.textContent=card.effective[key];section.append(value);
+        }
+        $('fields').append(section);
+      });
+      $('save').disabled=!dirty;
+    }
+    async function select(id){
+      const token=++version,requestedRevision=revision;
+      selected=id;editing=false;setDirty(false);card=null;$('blank').textContent='Загружаем карточку…';draw();list();
+      try{const result=await call('participantCard',{user_id:id});if(token!==version)return;card=result;cardRevision=requestedRevision;draw();status(indexStatus);}
+      catch(e){if(token===version){$('blank').textContent='Не удалось загрузить карточку';status(e.message,true);}}
+    }
+    async function refreshList(){
+      if(loading||!host.isConnected||page!=='participants'||!state.online||document.hidden)return;loading=true;
+      try{
+        const result=await call('listParticipants'),changed=JSON.stringify(people)!==JSON.stringify(result.items);
+        indexStatus=result.status;people=result.items;busy=result.busy;revision=result.revision;
+        if(changed||!loaded)list();
+        const first=!loaded;loaded=true;controls();
+        if(first)findPeople();
+        if(!selected&&people.length)await select(people[0].id);
+        else if(!selected)$('blank').textContent='Выберите участника в списке.';
+        else if(!editing&&card&&cardRevision!==revision)await select(selected);
+        if(!editing&&(!selected||card))status(indexStatus);
+      }catch(e){status(e.message,true);if(!loaded)$('blank').textContent='Список временно недоступен.';}
+      finally{loading=false;}
+    }
+    async function findPeople(){
+      if(!host.isConnected||!state.online)return;
+      const query=$('search').value.trim(),token=++searchVersion;
+      lookingUp=true;$('lookup-error').hidden=true;list();
+      try{
+        const result=await call('findParticipants',{query});
+        if(token!==searchVersion)return;
+        people=result.items;matches=new Set(result.matches);
+        if(!selected&&visiblePeople().length)await select(visiblePeople()[0].id);
+      }catch(e){if(token===searchVersion){$('lookup-message').textContent=e.message;$('lookup-error').hidden=false;}}
+      finally{if(token===searchVersion){lookingUp=false;list();}}
+    }
+    $('retry').onclick=findPeople;
+    $('search').oninput=()=>{
+      clearTimeout(searchTimer);searchVersion++;matches.clear();lookingUp=true;$('lookup-error').hidden=true;list();
+      if(loaded)searchTimer=setTimeout(findPeople,350);
+    };
+    $('all').onchange=()=>{for(const p of visiblePeople()){if($('all').checked)checked.add(p.id);else checked.delete(p.id);}list();};
+    function setSelectionMode(active){
+      choosing=active;
+      if(!active)checked.clear();
+      list();
+    }
+    $('choose').onclick=()=>setSelectionMode(!choosing);
+    $('depth').oninput=controls;
+    $('edit').onclick=()=>{editing=true;draw();status('Пустое поле использует вывод из переписки.');$('portrait').focus();};
+    $('cancel').onclick=()=>{setDirty(false);editing=false;draw();status(indexStatus);};
+    $('save').onclick=async()=>{
+      if(!editing||saving||!dirty)return;
+      const values=Object.fromEntries(keys.map(k=>[k,$(k).value]));
+      saving=true;$('save').disabled=$('cancel').disabled=true;keys.forEach(k=>$(k).disabled=true);
+      try{card=await call('saveParticipant',{user_id:selected,...values});setDirty(false);editing=false;draw();status('Изменения сохранены');}
+      catch(e){status(e.message,true);$('save').disabled=false;keys.forEach(k=>$(k).disabled=false);}
+      finally{saving=false;$('cancel').disabled=false;}
+    };
+    $('rescan').onclick=async()=>{
+      if($('rescan').disabled)return;
+      if(!choosing){setSelectionMode(true);return;}
+      submitting=true;controls();
+      try{
+        const result=await call('refreshParticipants',{ids:[...checked],depth:$('depth').valueAsNumber});
+        busy=true;setSelectionMode(false);status(result.status);await refreshList();
+      }catch(e){status(e.message,true);}
+      finally{submitting=false;controls();}
+    };
+    return {refresh:refreshList};
+}
+
 async function load(section) {
+    if(section==='participants'){
+        if(state.online && !roster && participantMarkup){
+            roster=mountParticipants($('participantPanel'));
+            roster.refresh();
+        }
+        return;
+    }
     if(section==='tasks') return;
     if(section==='projects') void load('replies');
     if(section==='replies' && $('client').value!=='codex' && page!=='projects')return;
@@ -322,7 +511,8 @@ function select(section) {
     for(const b of document.querySelectorAll('[data-page]')) {
         if(b.dataset.page===page) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
     }
-    controls(); load(page);
+    controls();
+    if(page==='participants' && roster) roster.refresh(); else load(page);
 }
 async function change(fn, success='') {
     if(working) return;
@@ -333,11 +523,15 @@ async function change(fn, success='') {
     finally { working=false; controls(); }
 }
 chrome.webview.addEventListener('message',({data:m})=>{
-    if(m.type==='open'){ select(m.section); return; }
+    if(m.type==='open'){ participantMarkup=m.participantMarkup; select(m.section); return; }
     if(m.type==='state'){
         if(m.state.signedIn||m.state.cliLinked||!clientChosen)$('client').value=m.state.client||'codex';
         if(Boolean(state.signedIn)!==Boolean(m.state.signedIn)){
             sessionVersion++;pendingModel=undefined;delete data.replies;delete errors.replies;
+        }
+        if(roster && (m.state.changed || (state.signedIn && !m.state.signedIn))){
+            $('participantPanel').replaceWith(Object.assign(document.createElement('div'),{id:'participantPanel'}));
+            roster=null;dirtyParticipant=false;trackChanges();
         }
         if(state.signedIn && !m.state.signedIn){
             for(const section of pages){delete data[section];delete errors[section];delete notes[section];}
@@ -458,7 +652,8 @@ $('saveProjects').onclick=()=>change(async()=>{
 $('client').onchange=()=>{clientChosen=true;controls();load(page);};
 $('agentButton').onclick=()=>change(()=>state.signedIn||state.cliLinked?call('disconnectAgent'):call('connectAgent',
     {...($('client').value==='codex'?pendingModel:{}),client:$('client').value}));
-$('participants').onclick=()=>change(()=>call('participants'));
+setInterval(()=>roster?.refresh(),4000);
+document.addEventListener('visibilitychange',()=>roster?.refresh());
 $('retry').onclick=()=>{ delete errors[page]; load(page); };
 $('retryModels').onclick=()=>{ delete errors.replies; load('replies'); };
 $('stay').onclick=()=>$('discard').close();

@@ -77,10 +77,10 @@ export function openProjectApi(key, fetcher = fetch, board = requireBoard()) {
       response = await fetcher(url, { method, redirect: fileLimit ? 'manual' : 'error', signal: AbortSignal.timeout(15_000),
         headers: { authorization, accept: fileLimit ? '*/*' : 'application/hal+json', ...(body ? { 'content-type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined });
-    } catch {
+    } catch (cause) {
       if (method === 'POST' && url.pathname.endsWith('/activities'))
         throw new Error('Отправка комментария не подтверждена. Обновите обсуждение перед повтором.');
-      throw new Error(method === 'PATCH' ? 'OpenProject не подтвердил обновление. Проверьте задачу перед повтором.' : 'API OpenProject недоступен.');
+      throw Object.assign(new Error(method === 'PATCH' ? 'OpenProject не подтвердил обновление. Проверьте задачу перед повтором.' : 'API OpenProject недоступен.', {cause}), {networkError:true});
     }
     if (fileLimit && [301,302,303,307,308].includes(response.status) && response.headers.get('location')) {
       await response.body?.cancel();
@@ -92,7 +92,7 @@ export function openProjectApi(key, fetcher = fetch, board = requireBoard()) {
       if (response.status === 401) throw new Error('OpenProject не принял API-ключ. Проверьте его в настройках «Доска задач».');
       if (response.status === 403) throw Object.assign(new Error('В OpenProject у этого аккаунта недостаточно прав.'), {status:403});
       if (response.status === 409) throw new Error('Задачу изменили. Обновите карточку и проверьте правки.');
-      if (response.status === 422) throw new Error('OpenProject отклонил изменения. Проверьте поля и доступные переходы статуса.');
+      if (response.status === 422) throw Object.assign(new Error('OpenProject отклонил запрос. Проверьте поля и доступные переходы статуса.'), {status:422});
       throw Object.assign(new Error(`API OpenProject вернул HTTP ${response.status}.`), {status:response.status});
     }
     if (fileLimit) {
@@ -102,7 +102,10 @@ export function openProjectApi(key, fetcher = fetch, board = requireBoard()) {
       }
       return readLimitedBytes(response.body,fileLimit);
     }
-    return response.json().catch(() => { throw new Error('API OpenProject вернул данные другого формата.'); });
+    return response.json().catch(cause => {
+      if (cause instanceof SyntaxError) throw new Error('API OpenProject вернул данные другого формата.');
+      throw Object.assign(new Error('Не удалось дочитать ответ OpenProject.', {cause}), {networkError:true});
+    });
   };
   return Object.assign(get, {board});
 }
@@ -412,6 +415,18 @@ async function boardStatuses(api) {
   return entries.map(({id, name, isClosed}) => ({id, name, closed:isClosed}));
 }
 
+function boardReader(api) {
+  const read = async (path, params) => {
+    try { return await api(path, params); }
+    catch (error) {
+      if (!error.networkError && ![408, 502, 503, 504].includes(error.status)) throw error;
+      await delay(400);
+      return api(path, params);
+    }
+  };
+  return Object.assign(read, {board:api.board});
+}
+
 function overlayFile(board, profile) {
   if (!Number.isSafeInteger(profile) || profile < 1) throw Error('Выберите пространство Пачки.');
   return join(siteDir(board), `overlay-${boardId(board)}-${profile}.json`);
@@ -442,7 +457,16 @@ export async function overlayStatusSettings(profile, input) {
     return {};
   }
   const api = await taskEditor(profile);
-  return {boardUrl:board.href, statuses:await boardStatuses(api), selected:await overlaySelection(board, profile)};
+  return {boardUrl:board.href, statuses:await boardStatuses(boardReader(api)), selected:await overlaySelection(board, profile)};
+}
+
+export async function overlayTaskBoard(profile) {
+  const api = await savedApi(profile);
+  if (!api) return {configured:false};
+  const [{user, tasks}, selected] = await Promise.all([assignedBoardTasks(api), overlaySelection(api.board, profile)]);
+  return {configured:true, boardUrl:api.board.href, user, selected,
+    tasks:tasks.map(({id, subject, project, status, status_id, closed, due_date, url}) =>
+      ({id, subject, project, status, status_id, closed, due_date, url}))};
 }
 
 export async function assignedTaskBoard(profile, { offset, closed, account_id, overlay }) {
@@ -454,11 +478,17 @@ export async function assignedTaskBoard(profile, { offset, closed, account_id, o
 
 export async function assignedPage(api, limit, offset, closed, accountId, selected = null) {
   if (!Number.isSafeInteger(offset) || offset < 1 || typeof closed !== 'boolean') throw Error('Укажите страницу доски.');
-  const [{user, tasks}, statuses] = await Promise.all([readBoardTasks(api, accountId), boardStatuses(api)]);
-  const allowed = new Map(statuses.filter(s => selected === null ? s.closed === closed : selected.includes(s.id)).map(s => [s.id,s]));
-  const matches = tasks.filter(task => allowed.has(task.status_id)).sort((a,b) => b.id - a.id);
-  const page = matches.slice((offset - 1) * limit, offset * limit).map(task => ({...task, assignee:user.name, closed:allowed.get(task.status_id).closed}));
-  return {user, total:matches.length, more:offset * limit < matches.length, tasks:page};
+  const {user, tasks} = await assignedBoardTasks(api, accountId);
+  const matches = tasks.filter(task => selected === null ? task.closed === closed : selected.includes(task.status_id));
+  return {user, total:matches.length, more:offset * limit < matches.length, tasks:matches.slice((offset - 1) * limit, offset * limit)};
+}
+
+async function assignedBoardTasks(api, accountId) {
+  const read = boardReader(api);
+  const [{user, tasks}, statuses] = await Promise.all([readBoardTasks(read, accountId), boardStatuses(read)]);
+  const byStatus = new Map(statuses.map(s => [s.id, s.closed]));
+  return {user, tasks:tasks.filter(task => byStatus.has(task.status_id)).sort((a,b) => b.id - a.id)
+    .map(task => ({...task, assignee:user.name, closed:byStatus.get(task.status_id)}))};
 }
 
 async function taskEditor(profile) {
@@ -661,19 +691,46 @@ export function loginOpenProject() {
   });
 }
 
+// filters replaces all saved conditions. Only refine a column when OpenProject
+// supplies its complete filter list and it has no assignee condition of its own.
+function columnAssigneeFilter(page, board, userId) {
+  const href = page._links?.self?.href;
+  if (!href || !URL.canParse(href, board)) return;
+  const url = new URL(href, board);
+  if (url.origin !== board.origin || url.searchParams.has('eprops')) return;
+  let filters;
+  try { filters = JSON.parse(url.searchParams.get('filters')); } catch { return; }
+  if (!Array.isArray(filters) || filters.some(filter => !filter || typeof filter !== 'object' ||
+    Object.keys(filter).some(key => /^(assignee|assigned_to|assignedTo)(Id|_id)?$/i.test(key)))) return;
+  return JSON.stringify([...filters, {assignee:{operator:'=', values:[String(userId)]}}]);
+}
+
 async function readColumn(get, widget, userId) {
   const {origin} = get.board;
   const queryId = Number(widget.options?.queryId);
   if (!Number.isSafeInteger(queryId) || queryId < 1) throw new Error('У колонки доски отсутствует ID запроса.');
   const matches = [];
-  let read = 0;
-  for (let offset = 1; ; offset++) {
+  let read = 0, offset = 1, filters, triedFilter = false;
+  for (;;) {
     // OpenProject pins manually ordered queries to their first page.
-    const query = await get(`/api/v3/queries/${queryId}`, {pageSize:100, offset, sortBy:JSON.stringify([['id', 'asc']])});
+    const params = {pageSize:filters ? 100 : 50, offset, sortBy:JSON.stringify([['id', 'asc']])};
+    if (filters) params.filters = filters;
+    let query;
+    try { query = await get(`/api/v3/queries/${queryId}`, params); }
+    catch (error) {
+      if (!filters || ![400, 414, 422].includes(error.status)) throw error;
+      filters = undefined; offset = 1; read = 0; matches.length = 0;
+      continue;
+    }
     const page = query._embedded?.results;
     const cards = page?._embedded?.elements;
     if (!Array.isArray(cards)) throw new Error('OpenProject не вернул карточки колонки.');
     if (page.offset != null && page.offset !== offset) throw Error('OpenProject вернул неверную страницу колонки.');
+    if (offset === 1 && !triedFilter && cards.length > 0 && page.total > cards.length) {
+      triedFilter = true;
+      filters = columnAssigneeFilter(page, get.board, userId);
+      if (filters) continue;
+    }
     for (const card of cards) {
       if (card._links?.assignee?.href !== `/api/v3/users/${userId}`) continue;
       matches.push({
@@ -687,6 +744,7 @@ async function readColumn(get, widget, userId) {
     }
     read += cards.length;
     if (!cards.length || read >= page.total) return matches;
+    offset++;
   }
 }
 

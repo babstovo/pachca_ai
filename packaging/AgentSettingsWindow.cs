@@ -70,7 +70,7 @@ internal sealed partial class PachcaWindow
                 request = Convert.ToInt32(Get(data, "request"));
                 if (action == "ready") {
                     ready = true;
-                    Post(new { type = "open", section = initialSection });
+                    Post(new { type = "open", section = initialSection, participantMarkup = EditorResource("Participants.html") });
                     lastState = null;
                     PublishState();
                     return;
@@ -78,7 +78,8 @@ internal sealed partial class PachcaWindow
                 if (action == "dirty") { dirty = Equals(Get(data, "value"), true); return; }
                 if (action == "close") { if (!Writing) { discard = true; Close(); } return; }
 
-                bool read = action == "models" || action == "availableModels" || action == "profile" || action == "projects" || action == "codexProjects";
+                bool read = action == "models" || action == "availableModels" || action == "profile" || action == "projects" || action == "codexProjects" ||
+                    action == "listParticipants" || action == "findParticipants" || action == "participantCard";
                 if (!read) {
                     if (Writing) throw new InvalidOperationException("Дождитесь завершения операции.");
                     locked = Writing = true;
@@ -99,7 +100,8 @@ internal sealed partial class PachcaWindow
                             throw new InvalidOperationException("Пространство изменилось. Откройте выбор статусов заново.");
                         data["profile_id"] = app.taskProfile;
                         result = await app.Request("desktop-overlay-statuses", data);
-                        if (action == "saveOverlayStatuses" && app.taskOverlay != null) app.taskOverlay.ResetProfile();
+                        if (action == "saveOverlayStatuses" && app.taskOverlay != null && Equals(app.taskProfile, data["profile_id"]))
+                            app.taskOverlay.ApplyStatuses(Get(data, "boardUrl"), Get(data, "statusIds"));
                         break;
                     case "taskStartup":
                         app.SaveOverlayOptions(Equals(Get(data, "enabled"), true), app.OverlayOptions.InBrowser, app.OverlayOptions.SavedBounds());
@@ -149,9 +151,16 @@ internal sealed partial class PachcaWindow
                         app.SetBoardKeyProfile(action == "saveKey" ? (object)keyProfile : null, true);
                         break;
                     case "loginBoard": await app.Request("openproject-login", new { }); break;
-                    case "participants":
-                        using (var dialog = new ParticipantWindow(app)) dialog.ShowDialog(this);
+                    case "listParticipants":
+                        var roster = await app.Request("desktop-participants", data);
+                        if (!Equals(Get(roster,"profile_id"), profile))
+                            throw new InvalidOperationException("Пространство изменилось. Откройте настройки заново.");
+                        result = roster;
                         break;
+                    case "findParticipants": result = await app.Request("desktop-find-participants", data); break;
+                    case "participantCard": result = await app.Request("desktop-participant", data); break;
+                    case "saveParticipant": result = await app.Request("desktop-save-participant", data); break;
+                    case "refreshParticipants": result = await app.Request("desktop-index-participants", data); break;
                     case "connectAgent":
                         if (!app.signedIn) {
                             var client = Get(data,"client") as string ?? "codex";

@@ -46,8 +46,8 @@ main { min-width: 0; max-width: 100%; }
 const $ = id => document.getElementById(id);
 const tray = $('tray'), host = chrome.webview;
 const papers = ['#f4df83', '#bcded4', '#e7c5da', '#bcd6ee', '#f0c8a0'];
-let generation, available = false, busy = false, page = 0, account = null, more = false;
-const ids = new Set();
+let generation, available = false, busy = false, board = null, pendingFilter = null;
+let visibleTasks = [], rendered = 0;
 function send(action, values = {}) { host.postMessage({ action, generation, ...values }); }
 
 // Clip the native window to the same visible pieces that WebView draws.
@@ -91,22 +91,22 @@ function message(text) {
   publishShape();
 }
 function clearNotes() {
-  tray.replaceChildren(); ids.clear(); account = null; page = 0; more = false;
+  tray.replaceChildren(); visibleTasks = []; rendered = 0;
   tray.hidden = true; tray.scrollLeft = 0;
 }
-function load(append) {
+function load() {
   if (!available || busy) return;
   busy = $('refresh').disabled = true;
-  if (!append) clearNotes();
-  message(page ? '' : 'Загружаем задачи…');
-  send('list', { offset: page + 1, account_id: account });
+  board = null; clearNotes();
+  message('Загружаем задачи…');
+  send('list');
 }
 function noteFor(task) {
   const note = document.createElement('button');
   note.type = 'button'; note.className = 'note';
   note.onclick = event => {
     if (event.detail && (suppressClick || event.target.closest('.fold'))) return;
-    send('open-task', { id:task.id, url:task.url, closed:task.closed, account_id:account });
+    send('open-task', { id:task.id, url:task.url, closed:task.closed, account_id:board.user.id });
   };
   note.style.setProperty('--paper', papers[task.id % papers.length]);
   const ref = ['№' + task.id, task.project].filter(Boolean).join(' · ');
@@ -120,7 +120,17 @@ function noteFor(task) {
   return note;
 }
 function loadNearEnd() {
-  if (more && tray.scrollLeft + tray.clientWidth >= tray.scrollWidth - 24) load(true);
+  if (rendered >= visibleTasks.length || tray.scrollLeft + tray.clientWidth < tray.scrollWidth - 24) return;
+  const rows = visibleTasks.slice(rendered, rendered + 50);
+  tray.append(...rows.map(noteFor)); rendered += rows.length;
+  updateShape();
+}
+function filterNotes(selected) {
+  clearNotes();
+  visibleTasks = board.tasks.filter(task => selected === null ? !task.closed : selected.includes(task.status_id));
+  tray.hidden = !visibleTasks.length;
+  loadNearEnd();
+  message(tray.hidden ? 'На этой доске нет ваших задач с выбранными статусами.' : '');
 }
 host.addEventListener('message', ({ data }) => {
   if (data.type === 'gap-wheel') {
@@ -129,27 +139,27 @@ host.addEventListener('message', ({ data }) => {
     return;
   }
   if (data.type === 'context') {
-    generation = data.generation; available = data.available; busy = false;
+    generation = data.generation; available = data.available; busy = false; board = pendingFilter = null;
     clearNotes(); $('refresh').disabled = !available;
-    if (available) load(false);
+    if (available) load();
     else message('Для просмотра задач подключите OpenProject в настройках «Доска задач».');
+    return;
+  }
+  if (data.type === 'statuses' && data.generation === generation) {
+    if (board?.boardUrl === data.boardUrl) filterNotes(data.selected);
+    else { pendingFilter = data; load(); }
     return;
   }
   if (data.type !== 'page' || data.generation !== generation || !busy) return;
   busy = $('refresh').disabled = false;
-  if (data.error) { more = false; message(data.error); return; }
+  if (data.error) { message(data.error); return; }
   const result = data.result;
   if (!result.configured) { clearNotes(); message('Добавьте ключ OpenProject в настройках «Доска задач».'); return; }
-  account = result.user.id; page++; more = result.more && result.tasks.length > 0;
-  const notes = document.createDocumentFragment();
-  for (const task of result.tasks) {
-    if (!ids.has(task.id)) { notes.append(noteFor(task)); ids.add(task.id); }
-  }
-  tray.append(notes); tray.hidden = !ids.size;
-  message(tray.hidden ? 'На этой доске нет ваших задач с выбранными статусами.' : '');
-  loadNearEnd();
+  board = result;
+  filterNotes(pendingFilter && pendingFilter.boardUrl === board.boardUrl ? pendingFilter.selected : board.selected);
+  pendingFilter = null;
 });
-$('refresh').onclick = () => load(false);
+$('refresh').onclick = load;
 $('close').onclick = () => send('close');
 let press = null, suppressClick = false;
 document.addEventListener('pointerdown', event => {

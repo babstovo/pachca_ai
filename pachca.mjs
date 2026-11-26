@@ -81,7 +81,7 @@ async function main() {
     'desktop-projects', 'desktop-save-projects', 'desktop-codex-projects', 'desktop-models', 'desktop-save-model',
       'desktop-confirmation', 'desktop-dismiss-question', 'desktop-review-draft',
     'desktop-openproject-key-state', 'desktop-openproject-key', 'desktop-openproject-remove-key', 'desktop-openproject-status', 'desktop-task-profile',
-    'desktop-task-board', 'desktop-overlay-statuses', 'desktop-task-workflow', 'desktop-task-update', 'desktop-task-detail',
+    'desktop-task-board', 'desktop-overlay-board', 'desktop-overlay-statuses', 'desktop-task-workflow', 'desktop-task-update', 'desktop-task-detail',
     'desktop-task-comments', 'desktop-task-fields', 'desktop-task-edit', 'desktop-task-comment',
     'desktop-task-codex-info', 'desktop-task-codex-start', 'desktop-task-codex-open',
     'desktop-codex-status', 'desktop-codex-connect', 'desktop-agent-enable', 'desktop-agent-disable', 'desktop-agent-link', 'desktop-available-models',

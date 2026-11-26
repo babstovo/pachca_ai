@@ -1,10 +1,6 @@
-<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
-<title>Участники и стиль ответов</title>
 <style>
-:root{color-scheme:dark;font:14px/1.45 "Segoe UI",Arial,sans-serif;color:#e5e7f0;background:#1d1e22;--surface:#1e1f23;--field:#292b32;--line:#323644;--muted:#a4a9bd;--accent:#4854f9}
-*{box-sizing:border-box}body{margin:0;height:100vh;display:grid;grid-template-columns:clamp(190px,29vw,268px) minmax(0,1fr)}button,input,textarea{font:inherit;color:inherit}button{cursor:pointer;border:0;background:none}button:disabled{opacity:.48;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #979fff;outline-offset:2px}
+:host{color-scheme:dark;font:14px/1.45 "Segoe UI",Arial,sans-serif;color:#e5e7f0;background:#1d1e22;--surface:#1e1f23;--field:#292b32;--line:#323644;--muted:#a4a9bd;--accent:#4854f9}
+*{box-sizing:border-box}:host{min-height:0;flex:1;display:grid;grid-template-columns:clamp(152px,29%,240px) minmax(0,1fr)}button,input,textarea{font:inherit;color:inherit}button{cursor:pointer;border:0;background:none}button:disabled{opacity:.48;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #979fff;outline-offset:2px}
 aside{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:18px 10px 10px}h1,h2,p{margin:0}h1{font-size:17px;margin:0 8px 14px;display:flex;align-items:center;gap:8px}#count{font-size:13px;color:var(--muted);font-weight:500}
 .search{display:flex;align-items:center;gap:9px;margin-bottom:12px;padding:0 10px;height:36px;flex:none;background:var(--field);border:1px solid var(--line);border-radius:6px}.glass{width:14px;height:14px;border:1.6px solid var(--muted);border-radius:50%;position:relative;flex:none}.glass:after{content:"";position:absolute;right:-4px;bottom:-2px;width:6px;border-top:1.6px solid var(--muted);transform:rotate(45deg)}
 .search input{background:none;border:none;width:100%;min-width:0}.search:focus-within{border-color:#929aff}.search input:focus-visible{outline:none}
@@ -13,16 +9,17 @@ aside{background:var(--surface);border-right:1px solid var(--line);display:flex;
 #rescan{width:100%;text-align:left}.empty{padding:14px;color:var(--muted)}main{min-height:0;display:flex;flex-direction:column}header{padding:16px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);min-height:70px}header .avatar{width:38px;height:38px;font-size:14px}h2{font-size:18px;line-height:1.2;overflow-wrap:anywhere}header .secondary{margin-left:auto;flex:none}
 #body{overflow:auto;flex:1;padding:0 24px}section{padding:16px 0;border-bottom:1px solid var(--line)}section label{display:block;font-size:13px;font-weight:600;color:#adb3c8;margin-bottom:6px}.value{white-space:pre-wrap;overflow-wrap:anywhere}.hint{color:var(--muted);font-size:13px;margin:6px 0 10px}.field{width:100%;display:block;min-height:66px;resize:vertical;padding:9px 11px;border:1px solid #424758;border-radius:6px;background:#22242d}
 #evidence{padding:15px 0;color:var(--muted);font-size:12px}main footer{padding:12px 22px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px;min-height:50px}#status{flex:1;color:var(--muted);font-size:12px}#status.error{color:#ffb2ad}dialog{background:#25262d;color:inherit;border:1px solid #414455;border-radius:9px;padding:20px;max-width:340px}dialog::backdrop{background:#101117a8}dialog p{margin-bottom:16px}[hidden]{display:none!important}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#404456;border-radius:5px}
-@media(max-width:680px){body{grid-template-columns:176px minmax(0,1fr)}header{flex-wrap:wrap;padding:12px;gap:8px}header .secondary{font-size:12px}#body{padding:0 14px}main footer{flex-wrap:wrap;padding:9px 12px}}
+@media(max-width:900px){header{flex-wrap:wrap;padding:12px;gap:8px}header .secondary{font-size:12px}#body{padding:0 14px}main footer{flex-wrap:wrap;padding:9px 12px}}
 .roster-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;margin:0 4px 12px}.roster-heading h1{margin:0}.roster-heading button{padding:4px 8px;font-size:12px}
 .select-all,.depth{display:flex;align-items:center;gap:8px}label.person{cursor:pointer}label.person:has(:checked){background:var(--accent);color:white}
 input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0;flex:none;cursor:pointer}
 .select-all{padding:0 4px 9px;font-size:12px;color:var(--muted)}.depth{justify-content:space-between;font-size:12px;margin-bottom:9px}
 #depth{width:66px;padding:4px 5px;background:var(--field);border:1px solid var(--line);border-radius:5px}#rescan{text-align:center}
 #analysis-note{font-size:12px;color:var(--muted);padding-top:14px}blockquote{margin:8px 0;padding-left:12px;border-left:2px solid #545d8c;white-space:pre-wrap;overflow-wrap:anywhere}blockquote small{display:block;color:var(--muted);margin-top:3px}
-</style></head><body>
+</style>
 <aside><div class="roster-heading"><h1>Участники <span id="count"></span></h1><button id="choose" class="secondary" aria-pressed="false">Выбрать</button></div>
 <label class="search"><span class="glass" aria-hidden="true"></span><input id="search" type="search" placeholder="Поиск в Пачке" aria-label="Поиск по имени" maxlength="200" autocomplete="off"></label>
+<div id="lookup-error" hidden><p class="empty" role="status" id="lookup-message"></p><button type="button" class="secondary" id="retry">Повторить загрузку</button></div>
 <label id="select-all" class="select-all" hidden><input id="all" type="checkbox" disabled><span id="all-label">Выбрать всех</span></label>
 <nav id="people" aria-label="Участники"></nav><footer>
 <label id="depth-field" class="depth" for="depth" hidden title="От 1 до 5 000. Учитываются сообщения участника и ваши адресные ответы в последних 5 000 сообщениях пространства.">Последних сообщений на человека<input id="depth" type="number" min="1" max="5000" step="1" value="100" required></label>
@@ -31,176 +28,3 @@ input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;margin:0;
 <div id="body"><p id="blank" class="empty">Загружаем участников…</p><p id="analysis-note" hidden></p><div id="fields"></div><p id="evidence"></p><div id="examples"></div></div>
 <footer><span id="status" role="status"></span><button id="cancel" class="secondary" hidden>Отмена</button><button id="save" class="primary" hidden>Сохранить</button></footer></main>
 <dialog id="discard"><p>Закрыть карточку без сохранения изменений?</p><button id="stay" class="secondary" autofocus>Продолжить правку</button> <button id="leave" class="primary">Не сохранять</button></dialog>
-<script>
-'use strict';
-const $=id=>document.getElementById(id);
-const keys=['portrait','style','approach','detail','role'], captions=['Психологический портрет по переписке','Манера общения','Как лучше отвечать','Технические подробности','Роль в проекте'];
-const colors=['#63538e','#485d91','#8b4b68','#447775','#826039','#586f47'];
-const pending=new Map();
-const checked=new Set();
-let choosing=false;
-let revision=-1,cardRevision=-1,busy=false,submitting=false;
-let searchTimer,searchVersion=0,matches=new Set(),lookupError='';
-let sequence=0,people=[],card=null,selected=0,editing=false,dirty=false,saving=false,loading=false,loaded=false,version=0,indexStatus='',discardAction;
-function call(action,data={}) {
-  const request=++sequence;
-  return new Promise((resolve,reject)=>{
-    pending.set(request,{resolve,reject});
-    chrome.webview.postMessage({request,action,...data});
-  });
-}
-chrome.webview.addEventListener('message',({data})=>{
-  if(data.type==='closeRequest'){confirmLeave(()=>chrome.webview.postMessage({action:'close'}));return;}
-  const job=pending.get(data.request);
-  if(!job)return;
-  pending.delete(data.request);
-  if(data.error)job.reject(new Error(data.error));else job.resolve(data.result);
-});
-function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
-function setDirty(value){if(dirty!==value){dirty=value;chrome.webview.postMessage({action:'dirty',value});}}
-function confirmLeave(action){
-  if(saving)return;
-  if(!dirty){action();return;}
-  discardAction=action;
-  if(!$('discard').open)$('discard').showModal();
-}
-$('stay').onclick=()=>$('discard').close();
-$('leave').onclick=()=>{const action=discardAction;$('discard').close();setDirty(false);action();};
-function avatar(el,p){el.textContent=p.name.trim().split(/\s+/).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();el.style.backgroundColor=colors[p.id%colors.length];}
-function visiblePeople(){
-  const query=$('search').value.trim().toLocaleLowerCase('ru');
-  return people.filter(p=>p.name.toLocaleLowerCase('ru').includes(query)||matches.has(p.id));
-}
-function controls(){
-  const visible=visiblePeople(),n=visible.filter(p=>checked.has(p.id)).length;
-  $('choose').disabled=submitting||busy;
-  $('choose').textContent=choosing?'Отмена':'Выбрать';
-  $('choose').setAttribute('aria-pressed',String(choosing));
-  $('select-all').hidden=$('depth-field').hidden=!choosing;
-  $('all').disabled=!visible.length;$('all').checked=!!n&&n===visible.length;$('all').indeterminate=n>0&&n<visible.length;
-  $('all-label').textContent=$('search').value.trim()?'Выбрать найденных':'Выбрать всех';
-  $('rescan').disabled=!loaded||submitting||busy||(choosing&&(!checked.size||!$('depth').validity.valid));
-  let caption='Обновить';
-  if(choosing)caption=checked.size?'Обновить выбранных ('+checked.size+')':'Обновить выбранных';
-  $('rescan').textContent=busy?'Обновление…':caption;
-}
-function list(){
-  const fragment=document.createDocumentFragment(),filtered=visiblePeople();
-  for(const p of filtered){
-    const row=document.createElement(choosing?'label':'button');row.className='person';
-    if(choosing){
-      const check=document.createElement('input');check.type='checkbox';check.checked=checked.has(p.id);
-      check.onchange=()=>{if(check.checked)checked.add(p.id);else checked.delete(p.id);controls();};
-      row.append(check);
-    }else{
-      row.setAttribute('aria-current',String(p.id===selected));
-      row.onclick=()=>{if(selected!==p.id||!card)confirmLeave(()=>select(p.id));};
-    }
-    const a=document.createElement('span');a.className='avatar';a.setAttribute('aria-hidden','true');avatar(a,p);
-    const n=document.createElement('span');n.textContent=p.name;row.append(a,n);fragment.append(row);
-  }
-  if(!filtered.length){const empty=document.createElement('p');empty.className='empty';empty.textContent=lookupError||($('search').value?'Никого не нашли':'Найдите участника по имени');fragment.append(empty);}
-  $('people').replaceChildren(fragment);$('count').textContent=people.length;controls();
-}
-function draw(){
-  $('name').textContent=card?card.name:'Карточка участника';$('avatar').hidden=!card;
-  if(card)avatar($('avatar'),card);
-  $('blank').hidden=!!card;$('edit').hidden=!card||editing;$('cancel').hidden=$('save').hidden=!editing;
-  $('fields').replaceChildren();$('evidence').textContent=card?card.evidence:'';
-  $('analysis-note').hidden=!card;$('examples').replaceChildren();
-  if(!card)return;
-  if(card.method==='none'&&!editing&&!Object.values(card.overrides).some(Boolean)){
-    $('analysis-note').textContent='Портрета пока нет. Нажмите «Выбрать» над списком, отметьте участника и обновите карточку.';
-    return;
-  }
-  $('analysis-note').textContent=card.method==='codex'?'Разбор Codex · сообщений в выборке: '+card.messages+' из '+card.limit:'Краткая сводка. Для разбора Codex отметьте участника и обновите карточку.';
-  if(card.examples?.length&&!editing){
-    const section=document.createElement('section'),heading=document.createElement('label');
-    heading.textContent='Примеры из переписки';section.append(heading);
-    for(const example of card.examples){
-      const quote=document.createElement('blockquote'),source=document.createElement('small');
-      quote.textContent=example.text;source.textContent=example.source+' · №'+example.id;quote.append(source);section.append(quote);
-    }
-    $('examples').append(section);
-  }
-  keys.forEach((key,i)=>{
-    const section=document.createElement('section'),label=document.createElement('label');
-    label.textContent=captions[i];section.append(label);
-    if(editing){
-      label.htmlFor=key;
-      const hint=document.createElement('p');hint.className='hint';hint.id=key+'-hint';hint.textContent='По переписке: '+card.inferred[key];
-      const input=document.createElement('textarea');input.id=key;input.className='field';input.maxLength=1500;
-      input.placeholder='Использовать вывод из переписки';input.value=card.overrides[key];input.setAttribute('aria-describedby',hint.id);
-      input.oninput=()=>{setDirty(keys.some(k=>$(k).value!==card.overrides[k]));$('save').disabled=!dirty;};
-      section.append(hint,input);
-    }else{
-      const value=document.createElement('p');value.className='value';value.textContent=card.effective[key];section.append(value);
-    }
-    $('fields').append(section);
-  });
-  $('save').disabled=!dirty;
-}
-async function select(id){
-  const token=++version,requestedRevision=revision;
-  selected=id;editing=false;setDirty(false);card=null;$('blank').textContent='Загружаем карточку…';draw();list();
-  try{const result=await call('card',{id});if(token!==version)return;card=result;cardRevision=requestedRevision;draw();status(indexStatus);}
-  catch(e){if(token===version){$('blank').textContent='Не удалось загрузить карточку';status(e.message,true);}}
-}
-async function refreshList(){
-  if(loading||document.hidden)return;loading=true;
-  try{
-    const result=await call('list'),changed=JSON.stringify(people)!==JSON.stringify(result.items);
-    indexStatus=result.status;people=result.items;busy=result.busy;revision=result.revision;
-    if(changed||!loaded)list();
-    const first=!loaded;loaded=true;controls();
-    if(first)findPeople();
-    if(!selected&&people.length)await select(people[0].id);
-    else if(!selected)$('blank').textContent='Выберите участника в списке.';
-    else if(!editing&&card&&cardRevision!==revision)await select(selected);
-    if(!editing&&(!selected||card))status(indexStatus);
-  }catch(e){status(e.message,true);if(!loaded)$('blank').textContent='Список временно недоступен.';}
-  finally{loading=false;}
-}
-async function findPeople(){
-  const query=$('search').value.trim(),token=++searchVersion;
-  try{
-    const result=await call('find',{query});
-    if(token!==searchVersion)return;
-    people=result.items;matches=new Set(result.matches);lookupError='';list();
-    if(!selected&&visiblePeople().length)await select(visiblePeople()[0].id);
-  }catch(e){if(token===searchVersion){lookupError=query?e.message:'Введите имя для поиска в Пачке.';list();}}
-}
-$('search').oninput=()=>{
-  clearTimeout(searchTimer);searchVersion++;matches.clear();lookupError='';list();
-  if(loaded&&$('search').value.trim())searchTimer=setTimeout(findPeople,350);
-};
-$('all').onchange=()=>{for(const p of visiblePeople()){if($('all').checked)checked.add(p.id);else checked.delete(p.id);}list();};
-function setSelectionMode(active){
-  choosing=active;
-  if(!active)checked.clear();
-  list();
-}
-$('choose').onclick=()=>setSelectionMode(!choosing);
-$('depth').oninput=controls;
-$('edit').onclick=()=>{editing=true;draw();status('Пустое поле использует вывод из переписки.');$('portrait').focus();};
-$('cancel').onclick=()=>{setDirty(false);editing=false;draw();status(indexStatus);};
-$('save').onclick=async()=>{
-  if(!editing||saving||!dirty)return;
-  const values=Object.fromEntries(keys.map(k=>[k,$(k).value]));
-  saving=true;$('save').disabled=$('cancel').disabled=true;keys.forEach(k=>$(k).disabled=true);
-  try{card=await call('save',{id:selected,...values});setDirty(false);editing=false;draw();status('Изменения сохранены');}
-  catch(e){status(e.message,true);$('save').disabled=false;keys.forEach(k=>$(k).disabled=false);}
-  finally{saving=false;$('cancel').disabled=false;}
-};
-$('rescan').onclick=async()=>{
-  if($('rescan').disabled)return;
-  if(!choosing){setSelectionMode(true);return;}
-  submitting=true;controls();
-  try{
-    const result=await call('refresh',{ids:[...checked],depth:$('depth').valueAsNumber});
-    busy=true;setSelectionMode(false);status(result.status);await refreshList();
-  }catch(e){status(e.message,true);}
-  finally{submitting=false;controls();}
-};
-refreshList();setInterval(refreshList,4000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshList();});
-</script></body></html>
