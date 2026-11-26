@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'">
+<title>Мои задачи OpenProject</title>
+<style>
+* { box-sizing: border-box }
+body { --note-height: clamp(52px, 49vh, 110px); margin: 0; height: 100vh; display: flex; justify-content: center;
+  align-items: flex-start; overflow: hidden; user-select: none; font: 13px "Segoe UI", sans-serif }
+[hidden] { display: none !important }
+aside { flex: none; display: grid; gap: 4px; margin-top: 5px }
+aside button { width: 21px; height: 21px; border: 0; border-radius: 50%; padding: 0; background: #626773; color: white;
+  font: 14px/1 "Segoe UI Symbol", sans-serif; cursor: pointer }
+aside button:is(:hover,:focus-visible) { background: #343942 }
+button:disabled { color: #ced1d7 }
+:focus-visible { outline: 2px solid #334f83; outline-offset: -3px }
+main { min-width: 0; max-width: 100%; }
+#message { position: relative; margin: 4px 8px; padding: 9px 14px; max-height: 90vh; overflow: auto; overflow-wrap: anywhere;
+  background: #f1e5ae; color: #302e28; cursor: grab }
+#tray { height: 100vh; display: flex; align-items: flex-start; gap: 11px; padding: 4px calc(var(--note-height) * .39) 0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none }
+.note { position: relative; flex: 0 0 calc(var(--note-height) * 1.65); height: var(--note-height); padding: 5px 8px;
+  border: 0; text-align: left; font: inherit; touch-action: none;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px; background: var(--paper); color: #262729;
+  cursor: grab; transform-origin: center top; transition: transform 140ms ease-out }
+.fold { position: absolute; right: 0; bottom: 0; width: 13px; height: 13px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 48%, #0003 50%, #0001) }
+.ref, .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; line-height: 1.1 }
+.ref { color: #4d4c43; font-variant-numeric: tabular-nums }
+.subject { font-size: 12px; line-height: 1.2; font-weight: 650; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere }
+.status { display: none }
+.note:has(+ .note:is(:hover,:focus-visible)), .note:is(:hover,:focus-visible) + .note { transform: scale(1.07); z-index: 1 }
+.note:is(:hover,:focus-visible) { height: calc(var(--note-height) + 9px); transform: scale(1.44); z-index: 2 }
+.note:is(:hover,:focus-visible) .status { display: block }
+@media (prefers-reduced-motion: reduce) { .note { transition: none } }
+</style></head><body>
+<aside aria-label="Управление стикерами">
+  <button id="refresh" aria-label="Обновить задачи" title="Обновить задачи" disabled>↻</button>
+  <button id="close" aria-label="Закрыть" title="Закрыть стикеры">×</button>
+</aside>
+<main>
+  <div id="message" role="status"><span id="caption">Загружаем задачи…</span><span class="fold" title="Потяните, чтобы изменить размер"></span></div>
+  <section id="tray" aria-label="Назначенные мне открытые задачи" hidden></section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const tray = $('tray'), host = chrome.webview;
+const papers = ['#f4df83', '#bcded4', '#e7c5da', '#bcd6ee', '#f0c8a0'];
+let generation, available = false, busy = false, page = 0, account = null, more = false;
+const ids = new Set();
+function send(action, values = {}) { host.postMessage({ action, generation, ...values }); }
+
+// Clip the native window to the same visible pieces that WebView draws.
+let lastShape = '', frame = 0, animateUntil = 0;
+function publishShape() {
+  const boxes = [];
+  const trayRect = tray.getBoundingClientRect();
+  const scrollable = tray.scrollWidth > tray.clientWidth;
+  let previous = null;
+  for (const el of document.querySelectorAll('aside button, #message, .note')) {
+    const rect = el.getBoundingClientRect();
+    const note = el.classList.contains('note');
+    const left = Math.max(rect.left, note ? trayRect.left : 0), right = Math.min(rect.right, note ? trayRect.right : innerWidth);
+    const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+    if (note) {
+      const fraction = Math.max(0, right - left) / rect.width;
+      el.style.opacity = fraction >= .999 ? '1' : String(.35 + .65 * fraction);
+    }
+    if (right <= left || bottom <= top) continue;
+    if (note && scrollable && previous && left > previous.right) {
+      boxes.push([previous.right, Math.max(previous.top, top), left, Math.min(previous.bottom, bottom), 'gap']);
+    }
+    boxes.push([left, top, right, bottom, !note && el.tagName === 'BUTTON' ? 'round' : 'rect']);
+    if (note) previous = {right, top, bottom};
+  }
+  const shape = {width:innerWidth, height:innerHeight, boxes};
+  const key = JSON.stringify(shape);
+  if (key !== lastShape) { lastShape = key; send('shape', shape); }
+}
+function shapeFrame() {
+  publishShape();
+  frame = performance.now() < animateUntil ? requestAnimationFrame(shapeFrame) : 0;
+}
+function updateShape() {
+  animateUntil = performance.now() + 180;
+  if (!frame) frame = requestAnimationFrame(shapeFrame);
+}
+for (const event of ['pointerover', 'pointerout', 'focusin', 'focusout', 'resize']) window.addEventListener(event, updateShape);
+function message(text) {
+  $('message').hidden = !text; $('caption').textContent = text;
+  publishShape();
+}
+function clearNotes() {
+  tray.replaceChildren(); ids.clear(); account = null; page = 0; more = false;
+  tray.hidden = true; tray.scrollLeft = 0;
+}
+function load(append) {
+  if (!available || busy) return;
+  busy = $('refresh').disabled = true;
+  if (!append) clearNotes();
+  message(page ? '' : 'Загружаем задачи…');
+  send('list', { offset: page + 1, account_id: account });
+}
+function noteFor(task) {
+  const note = document.createElement('button');
+  note.type = 'button'; note.className = 'note';
+  note.onclick = event => {
+    if (event.detail && (suppressClick || event.target.closest('.fold'))) return;
+    send('open-task', { id:task.id, url:task.url, account_id:account });
+  };
+  note.style.setProperty('--paper', papers[task.id % papers.length]);
+  const ref = ['№' + task.id, task.project].filter(Boolean).join(' · ');
+  const status = [task.status, task.due_date?.split('-').reverse().join('.')].filter(Boolean).join(' · ');
+  note.title = [ref, task.subject, status].filter(Boolean).join('\n');
+  note.setAttribute('aria-label', note.title);
+  for (const [name, text] of [['ref', ref], ['subject', task.subject], ['status', status]]) {
+    const part = document.createElement('span'); part.className = name; part.textContent = text; note.append(part);
+  }
+  note.append(document.querySelector('#message .fold').cloneNode(true));
+  return note;
+}
+function loadNearEnd() {
+  if (more && tray.scrollLeft + tray.clientWidth >= tray.scrollWidth - 24) load(true);
+}
+host.addEventListener('message', ({ data }) => {
+  if (data.type === 'gap-wheel') {
+    const distance = data.lines < 0 ? tray.clientWidth : data.lines * 32;
+    tray.scrollLeft += data.ticks * distance;
+    return;
+  }
+  if (data.type === 'context') {
+    generation = data.generation; available = data.available; busy = false;
+    clearNotes(); $('refresh').disabled = !available;
+    if (available) load(false);
+    else message('Для просмотра задач подключите агента в Пачке.');
+    return;
+  }
+  if (data.type !== 'page' || data.generation !== generation || !busy) return;
+  busy = $('refresh').disabled = false;
+  if (data.error) { more = false; message(data.error); return; }
+  const result = data.result;
+  if (!result.configured) { clearNotes(); message('Добавьте ключ OpenProject в настройках агента.'); return; }
+  account = result.user.id; page++; more = result.more && result.tasks.length > 0;
+  const notes = document.createDocumentFragment();
+  for (const task of result.tasks) {
+    if (!ids.has(task.id)) { notes.append(noteFor(task)); ids.add(task.id); }
+  }
+  tray.append(notes); tray.hidden = !ids.size;
+  message(tray.hidden ? 'В OpenProject у вас нет открытых задач.' : '');
+  loadNearEnd();
+});
+$('refresh').onclick = () => load(false);
+$('close').onclick = () => send('close');
+let press = null, suppressClick = false;
+document.addEventListener('pointerdown', event => {
+  const item = event.target.closest('.note, #message');
+  if (!item || !event.isPrimary || event.button !== 0) return;
+  suppressClick = !!event.target.closest('.fold');
+  if (suppressClick || item.id === 'message') { send(suppressClick ? 'resize' : 'move'); return; }
+  press = { id:event.pointerId, x:event.screenX, y:event.screenY };
+  item.setPointerCapture(event.pointerId);
+});
+document.addEventListener('pointermove', event => {
+  if (press?.id !== event.pointerId) return;
+  const dx = event.screenX - press.x, dy = event.screenY - press.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 4) return;
+  press = null; suppressClick = true;
+  send('move', {dx, dy, viewport:innerWidth});
+});
+for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  document.addEventListener(name, event => { if (press?.id === event.pointerId) press = null; });
+}
+tray.addEventListener('scroll', () => { updateShape(); loadNearEnd(); });
+tray.addEventListener('wheel', event => {
+  if (event.ctrlKey || event.shiftKey || event.deltaX || !event.deltaY || tray.scrollWidth <= tray.clientWidth) return;
+  event.preventDefault();
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? tray.clientWidth : 1;
+  tray.scrollLeft += event.deltaY * unit;
+}, { passive: false });
+publishShape();
+host.postMessage({ action: 'ready' });
+</script></body></html>

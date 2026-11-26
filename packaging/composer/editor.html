@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https://emoji.pachca-ai.invalid">
+<style>
+:root{color-scheme:dark;font:14px "Segoe UI",sans-serif;color:#e7e9f2;background:#1e1f23;--muted:#a6abc0;--line:#333748;--accent:#7989ff}
+*{box-sizing:border-box}body{margin:0;overflow:hidden}button,input,textarea{font:inherit;color:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.42}
+[hidden]{display:none!important}#stack{padding:4px 10px 16px}
+#box{background:#22232a;border:1px solid var(--line);border-radius:6px;overflow:hidden}#box:focus-within{border-color:#535d80}
+textarea{display:block;width:100%;min-height:46px;max-height:145px;resize:none;border:0;outline:0;background:none;line-height:20px;padding:14px 12px 4px;scrollbar-width:thin}
+::placeholder{color:var(--muted);opacity:1}
+.tools,.formats,.tabs,.search,.previews{display:flex;align-items:center;gap:3px}.tools{padding:2px 7px 5px}.icon,.format,.tab,.single{background:none;border:0;border-radius:5px;padding:0}
+.icon,.format,.tab{display:grid;place-items:center;color:var(--muted);width:29px;height:29px}.icon:hover,.format:hover,.tab:hover,.single:hover,.icon[aria-expanded=true]{background:#343846;color:#eef0fa}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}#send{margin-left:auto;color:var(--accent)}
+.formats{padding:4px 7px;background:#282a33;border-bottom:1px solid var(--line)}.format{font-size:14px}.previews{flex-wrap:wrap;padding:3px 9px}.tile{position:relative}.tile img{display:block;max-width:65px;height:38px;object-fit:contain}.tile button{position:absolute;right:-3px;top:-4px;border-radius:50%;border:0;background:#394057;color:white}
+#notice{margin:0 2px 5px;font-size:12px;color:var(--muted);overflow-wrap:anywhere;max-height:48px;overflow:auto}
+#palette{width:min(100%,328px);margin-bottom:5px;background:#272a34;border:1px solid #3b4053;border-radius:7px;overflow:hidden;box-shadow:0 3px 10px #0003}
+.tabs{justify-content:space-around;padding:3px 5px 0;border-bottom:1px solid var(--line);gap:0}.tab{height:36px;width:12.5%;border-radius:0;border-bottom:2px solid transparent}.tab.selected{color:var(--accent);border-bottom-color:#5365ff}
+.search{padding:9px 11px 5px;gap:6px}.query{display:flex;align-items:center;gap:7px;background:#363c50;border-radius:5px;padding:0 9px;flex:1;min-width:0;color:var(--muted)}.query svg{width:16px}.query input{background:none;border:none;outline:none;width:100%;height:33px;font-size:13px}
+#tone{background:#333744;width:33px;height:33px;font-family:"Segoe UI Emoji",sans-serif}#choices{overflow-y:auto;overscroll-behavior:contain;height:var(--list-height,230px);scrollbar-width:thin;scrollbar-color:#474d61 transparent;padding:0 8px 8px}
+h2{margin:8px 4px 5px;font-size:12px;color:#b4bacd;font-weight:600}.cells{display:grid;grid-template-columns:repeat(8,minmax(0,1fr))}.single{font:23px/1 "Segoe UI Emoji",sans-serif;height:34px}.empty{margin:12px 5px;color:var(--muted);font-size:13px}
+.single{display:grid;place-items:center;font-size:0}
+.glyph{display:block;width:25.5px;height:25.5px;background-image:url('https://emoji.pachca-ai.invalid/sheet.png');background-size:1581px 1581px}
+.format:nth-child(1){font-weight:700}.format:nth-child(2){font-style:italic}.format:nth-child(3){text-decoration:line-through}
+</style></head><body>
+<div id="stack"><section id="palette" aria-label="Выбор эмодзи" hidden>
+<div class="tabs" aria-label="Категории эмодзи"></div><div class="search"><label class="query"><span data-icon="search"></span><input id="query" placeholder="Поиск" aria-label="Поиск эмодзи"></label><button class="icon" id="tone" title="Изменить тон кожи" aria-label="Изменить тон кожи">👋</button></div>
+<div id="choices"></div></section>
+<div id="notice" role="status" hidden></div>
+<div id="box"><div class="formats" hidden aria-label="Форматирование"></div>
+<textarea id="message" rows="1" maxlength="16000" placeholder="Сообщение Codex" aria-label="Сообщение Codex"></textarea><div class="previews" hidden></div>
+<div class="tools"><button class="icon" id="attach" title="Прикрепить изображение" aria-label="Прикрепить изображение" data-icon="clip"></button>
+<button class="icon" id="emoji" title="Эмодзи" aria-label="Эмодзи" aria-expanded="false" data-icon="face"></button>
+<button class="icon" id="format" title="Форматирование" aria-label="Форматирование" aria-expanded="false">Aa</button>
+<button class="icon" id="send" title="Отправить (Enter)" aria-label="Отправить" data-icon="send" disabled></button></div></div>
+</div>
+<script type="application/json" id="catalog">__EMOJI_CATALOG__</script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s), message=$('#message'), palette=$('#palette'), query=$('#query'), choices=$('#choices');
+const catalog=JSON.parse($('#catalog').textContent), post=(type,extra={})=>chrome.webview.postMessage({type,...extra});
+const groups=['Эмоции и люди','Животные и природа','Еда и напитки','Занятия','Путешествия и места','Предметы','Символы','Флаги'];
+const paths={face:'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0ZM8 10h.1M16 10h.1M8 14q4 5 8 0',animal:'M4 10 3 3l6 3q3-1 6 0l6-3-1 7q3 10-8 11Q1 20 4 10ZM8 13h.1m8 0h.1',food:'M12 7q5-5 8 1 3 5-2 12-2 2-6 0-5 2-7-1-5-10 0-13 4-2 7 1Zm0-1q0-4 4-5',ball:'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0ZM4 6q9 2 14 14M5 19q1-9 12-16M2 13q13 0 19-6',car:'M3 17v-5l2-1 2-6h9l4 6 2 1v5h-3m-5 0H9M5 11h14M8 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm12 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z',bulb:'M9 17c0-4-4-4-4-9a7 7 0 0 1 14 0c0 5-4 5-4 9Zm0 3h6m-5 2h4',heart:'M12 21 4 13C-3 4 7-1 12 6c5-7 15-2 8 7Z',flag:'M5 22V3c6-4 8 4 15 0v11c-7 4-9-4-15 0',clip:'m8 15 8-8a2 2 0 0 1 3 3l-9 9a4 4 0 0 1-6-6L14 3a5 5 0 0 1 7 7L11 20',search:'M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Zm-2 5 6 6',send:'m3 3 18 9-18 9 3-9Zm3 9h15'};
+function icon(name){return '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="'+paths[name]+'"/></svg>'}
+for(const el of document.querySelectorAll('[data-icon]'))el.innerHTML=icon(el.dataset.icon);
+const groupIcons=['face','animal','food','ball','car','bulb','heart','flag'];
+let category=0,tone=0,allowed=false,hasImages=false;
+function sizeInput(){message.style.height='auto';message.style.height=message.scrollHeight+'px'}
+function refreshSend(){$('#send').disabled=!allowed||message.disabled||!(message.value.trim()||hasImages)}
+function changed(){sizeInput();refreshSend();post('text',{text:message.value})}
+function insert(value,start=message.selectionStart,end=message.selectionEnd){
+ if(message.disabled||message.value.length-end+start+value.length>message.maxLength)return;
+ message.setRangeText(value,start,end,'end');message.focus();changed();
+}
+function togglePalette(open,focus=true){
+ palette.hidden=!open;$('#emoji').setAttribute('aria-expanded',String(open));
+ if(open){query.value='';render();query.focus()}else if(focus)message.focus();
+}
+function render(){
+ const term=query.value.trim().toLocaleLowerCase();choices.replaceChildren();choices.scrollTop=0;
+ for(const [i,b] of [...$('.tabs').children].entries())b.classList.toggle('selected',!term&&i===category);
+ const rows=catalog.filter(e=>term?(e.name+' '+e.keywords+' '+e.code).toLocaleLowerCase().includes(term):e.group===category);
+ const title=document.createElement('h2');title.textContent=term?'Результаты поиска':groups[category];choices.append(title);
+ if(!rows.length){const hint=document.createElement('p');hint.className='empty';hint.textContent='Эмодзи не найдены';choices.append(hint);return}
+ const cells=document.createElement('div');cells.className='cells';
+ for(const e of rows){
+   const b=document.createElement('button');b.className='single';b.dataset.code=tone&&e.tones?e.tones[tone-1]:e.code;
+   b.title=e.name;b.setAttribute('aria-label',e.name);
+   const [x,y]=tone&&e.toneTiles?e.toneTiles[tone-1]:e.tile;
+   const glyph=document.createElement('span');glyph.className='glyph';glyph.style.backgroundPosition=(-25.5*x)+'px '+(-25.5*y)+'px';
+   b.append(glyph);cells.append(b);
+ }
+ choices.append(cells);
+}
+groups.forEach((name,i)=>{const b=document.createElement('button');b.className='tab';b.title=name;b.setAttribute('aria-label',name);b.innerHTML=icon(groupIcons[i]);b.onclick=()=>{category=i;query.value='';render()};$('.tabs').append(b)});
+choices.onclick=e=>{const b=e.target.closest('button.single');if(b){togglePalette(false);insert(b.dataset.code)}};
+query.oninput=render;$('#tone').onclick=()=>{tone=(tone+1)%6;$('#tone').textContent=['👋','👋🏻','👋🏼','👋🏽','👋🏾','👋🏿'][tone];render()};
+$('#emoji').onclick=()=>togglePalette(palette.hidden);message.onfocus=()=>{if(!palette.hidden)togglePalette(false)};
+document.onkeydown=e=>{if(e.key==='Escape'&&!palette.hidden){e.preventDefault();togglePalette(false)}};
+$('#format').onclick=()=>{const bar=$('.formats');bar.hidden=!bar.hidden;$('#format').setAttribute('aria-expanded',String(!bar.hidden));message.focus()};
+for(const [label,tip,mark] of [['B','Полужирный','**'],['I','Курсив','_'],['S','Зачёркнутый','~~'],['‹›','Код',String.fromCharCode(96)]]){
+ const b=document.createElement('button');b.className='format';b.title=tip;b.setAttribute('aria-label',tip);b.textContent=label;
+ b.onclick=()=>{let a=message.selectionStart,z=message.selectionEnd;insert(mark+message.value.slice(a,z)+mark);message.setSelectionRange(a+mark.length,z+mark.length)};$('.formats').append(b)
+}
+$('#attach').onclick=()=>post('attach');
+function send(){if(!$('#send').disabled){$('#send').disabled=true;post('submit',{text:message.value})}}
+$('#send').onclick=send;message.oninput=changed;
+message.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}};
+message.onpaste=e=>{if([...e.clipboardData.items].some(i=>i.type.startsWith('image/'))){e.preventDefault();post('pasteImage')}};
+chrome.webview.addEventListener('message',({data:d})=>{
+ if(d.type==='state'){
+   message.disabled=!d.enabled;allowed=d.available;for(const b of document.querySelectorAll('.tools button:not(#send),.formats button,.tile button'))b.disabled=!d.enabled;
+   if(!d.enabled&&!palette.hidden)togglePalette(false);refreshSend();$('#notice').hidden=!d.notice;$('#notice').textContent=d.notice;
+ }else if(d.type==='draft'){message.value=d.text;sizeInput();refreshSend()}
+ else if(d.type==='images'){const p=$('.previews');p.replaceChildren();hasImages=!!d.items.length;p.hidden=!hasImages;
+   d.items.forEach((item,i)=>{const tile=document.createElement('span');tile.className='tile';const img=document.createElement('img');img.src='data:image/png;base64,'+item;img.alt='Вложение '+(i+1);const b=document.createElement('button');b.textContent='×';b.setAttribute('aria-label','Убрать вложение '+(i+1));b.disabled=message.disabled;b.onclick=()=>post('remove',{index:i});tile.append(img,b);p.append(tile)});refreshSend();
+ }else if(d.type==='space'){document.documentElement.style.setProperty('--list-height',d.height+'px')}
+ else if(d.type==='focus'){message.focus()}else if(d.type==='closePalette'&&!palette.hidden)togglePalette(false,false)
+});
+new ResizeObserver(()=>post('height',{height:Math.ceil($('#stack').getBoundingClientRect().height*devicePixelRatio)})).observe($('#stack'));
+let lastWidth=0;
+new ResizeObserver(([entry])=>{
+ if(entry.contentRect.width!==lastWidth){lastWidth=entry.contentRect.width;sizeInput()}
+}).observe(message);
+post('ready');
+</script></body></html>

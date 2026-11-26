@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Мои задачи</title>
+<style>
+:root{color-scheme:dark;font:14px/1.45 "Segoe UI",Arial,sans-serif;color:#e5e7f0;background:#1d1e22;--field:#292b32;--line:#373944;--muted:#a4a9bd;--accent:#4854f9}
+*{box-sizing:border-box}body{height:100vh;margin:0;display:flex;flex-direction:column}h1,h2,h3,p{margin:0}button,select{font:inherit;color:inherit}button{border:1px solid var(--line);border-radius:6px;background:var(--field);padding:6px 12px;cursor:pointer}button:hover{background:#353741}button:disabled{opacity:.5;cursor:default}button:focus-visible,select:focus-visible{outline:2px solid #a4aaff;outline-offset:2px}
+header{display:flex;align-items:center;gap:12px;padding:17px 22px}header div:first-child{flex:1}h1{font-weight:650;font-size:21px}#account,.meta,.due,#count,#notice,.context{color:var(--muted);font-size:13px}header button{white-space:nowrap}.tabs{padding:0 22px;display:flex;align-items:center;gap:20px;border-bottom:1px solid var(--line)}.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:8px 0;color:var(--muted);font-weight:600}.tabs button[aria-pressed=true]{color:white;border-color:#848cff}#count{margin-left:auto}
+main{flex:1;min-height:0;overflow:auto;padding:18px 22px}#board{display:flex;gap:14px;align-items:flex-start;width:max-content;min-width:100%}.lane{width:clamp(244px,30vw,322px);background:#222328;border-radius:8px;padding:10px}.lane h2{display:flex;align-items:baseline;gap:8px;margin:0 2px 10px;font-size:14px;overflow-wrap:anywhere}.lane h2 span{color:var(--muted);font-size:12px;font-weight:400}.card{padding:12px;background:#2b2d34;border:1px solid #3a3d47;border-radius:6px;overflow-wrap:anywhere}.card+.card{margin-top:8px}.card h3{font-size:15px;line-height:1.35;font-weight:600;margin:5px 0}.due{margin-top:6px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.actions button{font-size:12px;padding:4px 7px;background:#30323a}.actions button:hover{background:#3c3e49}.actions .view{color:#c5c9ff}
+.empty{max-width:390px;margin:clamp(30px,13vh,110px) auto;text-align:center}.empty h2{font-size:18px}.empty p{margin:6px 0 16px;color:var(--muted)}
+footer{display:flex;align-items:center;gap:10px;min-height:42px;padding:7px 22px;border-top:1px solid var(--line)}#notice{flex:1}#notice.error{color:#ffb4ad}
+dialog{width:min(420px,92vw);color:inherit;background:#25262d;border:1px solid #464958;border-radius:9px;padding:21px}dialog::backdrop{background:#101117aa}dialog h2{font-size:18px;margin:5px 0 12px;overflow-wrap:anywhere}dialog label{display:block;margin:15px 0 5px}select{width:100%;padding:7px;border:1px solid var(--line);background:var(--field);border-radius:5px}dialog .actions{justify-content:flex-end;margin-top:18px}dialog .actions button{font:inherit;padding:6px 12px}.primary,dialog .actions .primary{background:var(--accent);border-color:var(--accent);color:white}.primary:hover,dialog .actions .primary:hover{background:#5863ff}
+[hidden]{display:none!important}::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:#494c59;border-radius:6px}@media(max-width:620px){header{flex-wrap:wrap;padding:12px}.tabs{padding:0 12px}main{padding:12px}.lane{width:250px}footer{padding:7px 12px}}
+#detail{width:min(100%,840px);margin:0 auto}.back{background:none;border:0;color:#b6bdff;padding:4px 0;margin-bottom:13px}.task-heading{font-size:clamp(20px,3vw,27px);line-height:1.25;margin:6px 0;overflow-wrap:anywhere}
+#facts{margin:5px 0 15px;color:var(--muted)}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.section-title h3,.discussion h3{font-size:16px}.body-text,.comment-body{white-space:pre-wrap;overflow-wrap:anywhere}.discussion{margin-top:22px;border-top:1px solid var(--line);padding-top:17px}
+.comment{padding:12px 0;border-bottom:1px solid var(--line)}.comment-meta{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}.comment-meta time,.internal{font-size:12px;color:var(--muted)}.comment-body{margin-top:4px}.inline-action{font-size:12px;color:#bbc2ff;background:none;border:0;padding:3px 0}.input{display:block;width:100%;font:inherit;color:inherit;background:var(--field);border:1px solid #494c59;border-radius:6px;padding:8px 10px}.input:focus-visible{outline:2px solid #a4aaff}textarea.input{resize:vertical}#detailsEdit label,#compose label{display:block;margin:12px 0 4px}.form-actions{display:flex;gap:8px;align-items:center;margin-top:8px}.quote{border-left:3px solid #848cff;padding:5px 10px;margin:9px 0;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--field)}#remote{color:#f4cc8d}.detail-foot{display:flex;align-items:center;gap:12px}.muted{color:var(--muted)}
+.formatted{white-space:normal;overflow-wrap:anywhere}.formatted p+p,.formatted blockquote{margin-top:.6em}.formatted ul,.formatted ol{padding-left:1.5em}.formatted blockquote{border-left:2px solid #777d96;margin-left:0;padding-left:.8em;color:var(--muted)}.formatted pre{white-space:pre-wrap}.formatted table{border-collapse:collapse}.formatted td,.formatted th{padding:4px 8px;border:1px solid var(--line)}
+.formatted a{color:#b6bdff;text-decoration:underline;text-underline-offset:2px}.formatted a:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.codex-project{display:grid;gap:7px;border-left:2px solid #676eaf;padding:2px 0 2px 12px;margin:4px 0 18px;overflow-wrap:anywhere}.codex-repo+.codex-repo{margin-top:7px}.codex-line{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap}.codex-line label{display:flex;gap:6px;align-items:center;cursor:pointer}.codex-branch{font:12px/1.5 Consolas,monospace;color:#c3c8e4}.codex-project button{width:max-content}.codex-note{white-space:pre-line;color:var(--muted)}.codex-note.error{color:#ffb4ad}
+</style>
+</head>
+<body>
+<header><div><h1>Мои задачи</h1><p id="account">OpenProject</p></div><button id="key" hidden>API-ключ</button><button id="refresh">Обновить</button></header>
+<nav class="tabs" aria-label="Состояние задач" hidden><button id="open" aria-pressed="true">Открытые</button><button id="closed" aria-pressed="false">Закрытые</button><span id="count"></span></nav>
+<main id="boardPage"><div id="board"></div><section class="empty" id="empty"><h2 id="headline">Загружаем задачи…</h2><p id="hint"></p><button id="connect" class="primary" hidden>Привязать API-ключ</button></section></main>
+<main id="detail" hidden><button id="back" class="back">← К моим задачам</button>
+<p id="ref" class="meta"></p><h2 id="subject" class="task-heading" tabindex="-1"></h2>
+<p id="facts"></p>
+<section id="codexProject" class="codex-project" aria-labelledby="codexLabel">
+<strong id="codexLabel">Проекты Codex для задачи</strong>
+<div id="codexRepos"></div>
+<button id="codexStart" hidden>Создать чат задачи</button>
+<p class="codex-note" id="codexNote" role="status" hidden></p>
+</section>
+<div class="section-title"><h3>Описание</h3><div><button id="statusDetail">Статус…</button> <button id="edit">Редактировать</button></div></div>
+<div id="description" class="body-text"></div><form id="detailsEdit" hidden>
+<label for="titleInput">Название</label><input id="titleInput" class="input" required>
+<label for="descriptionInput">Описание</label><textarea id="descriptionInput" class="input" rows="6"></textarea>
+<p id="remote" class="body-text" hidden></p><div class="form-actions"><button class="primary">Сохранить</button><button type="button" id="discard">Отмена</button></div></form>
+<section class="discussion"><h3>Обсуждение</h3><div id="comments"></div><button id="moreComments" hidden>Ещё комментарии</button>
+<p id="readOnlyNotes" class="meta" hidden>Обсуждение доступно вашему аккаунту только для чтения.</p>
+<form id="compose" hidden><label for="noteInput">Комментарий</label><div id="reply" class="quote" hidden><span id="replyText"></span><br><button type="button" class="inline-action" id="dropReply">Убрать цитату</button></div>
+<textarea id="noteInput" class="input" rows="3"></textarea><div class="form-actions"><button id="post" class="primary" disabled>Отправить комментарий</button></div></form></section></main>
+<footer><span id="notice" role="status"></span><button id="more" hidden>Показать ещё</button></footer>
+<dialog aria-labelledby="taskTitle"><p class="context" id="taskRef"></p><h2 id="taskTitle"></h2><p id="current"></p>
+<label for="next">Новый статус</label><select id="next"></select>
+<div class="actions"><button id="cancel" autofocus>Отмена</button><button id="apply" class="primary">Сохранить</button></div></dialog>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const tabs = document.querySelector('nav'), dialog = document.querySelector('dialog');
+const pending = new Map();
+let sequence = 0, busy = false, closed = false, page = 0, boardTotal = 0, user = null, tasks = [], selection;
+let card = null, changes = false, commentPage = 0, entries = [], quote = '';
+const drafts = new Map();
+function call(action, values = {}) {
+  const request = ++sequence;
+  return new Promise((resolve, reject) => {
+    pending.set(request, { resolve, reject });
+    chrome.webview.postMessage({ request, action, ...values });
+  });
+}
+chrome.webview.addEventListener('message', ({ data }) => {
+  const job = pending.get(data.request);
+  if (!job) return;
+  pending.delete(data.request);
+  if (data.error) job.reject(new Error(data.error));
+  else job.resolve(data.result);
+});
+function notice(message, error = false) {
+  $('notice').textContent = message;
+  $('notice').classList.toggle('error', error);
+}
+async function run(action) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('header,nav,main,footer').forEach(el => el.inert = true);
+  try { await action(); }
+  catch (error) { notice(error.message, true); }
+  finally {
+    busy = false;
+    document.querySelectorAll('header,nav,main,footer').forEach(el => el.inert = false);
+  }
+}
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+function button(label, action, cls) {
+  const node = el('button', label, cls);
+  node.onclick = () => run(action);
+  return node;
+}
+function renderBoard() {
+  const lanes = new Map();
+  for (const task of tasks) {
+    const status = task.status || 'Без статуса';
+    if (!lanes.has(status)) lanes.set(status, []);
+    lanes.get(status).push(task);
+  }
+  const fragment = document.createDocumentFragment();
+  for (const [status, items] of lanes) {
+    const lane = el('section', '', 'lane'), title = el('h2', status);
+    title.append(el('span', items.length)); lane.append(title);
+    for (const task of items) {
+      const card = el('article', '', 'card'), actions = el('div', '', 'actions');
+      card.append(el('p', [task.project, '№' + task.id].filter(Boolean).join(' · '), 'meta'), el('h3', task.subject));
+      if (task.due_date) card.append(el('p', 'Срок · ' + task.due_date.split('-').reverse().join('.'), 'due'));
+      actions.append(button('Посмотреть', () => openCard(task.id), 'view'));
+      if (task.editable) {
+        const statusButton = button('Статус…', () => chooseStatus(task, false));
+        statusButton.setAttribute('aria-label', 'Сменить статус');
+        actions.append(statusButton);
+        if (!closed) actions.append(button('Закрыть', () => chooseStatus(task, true)));
+      }
+      card.append(actions); lane.append(card);
+    }
+    fragment.append(lane);
+  }
+  $('board').replaceChildren(fragment);
+}
+function blank(title, hint = '', connect = false) {
+  $('empty').hidden = false; $('headline').textContent = title;
+  $('hint').textContent = hint; $('connect').hidden = !connect;
+}
+async function load(append = false) {
+  const offset = append ? page + 1 : 1;
+  if (!append) {
+    tasks = []; user = null; page = 0; renderBoard();
+    $('account').textContent = 'OpenProject'; $('count').textContent = '';
+    $('more').hidden = true; blank('Загружаем задачи…');
+  }
+  notice(append ? 'Загружаем ещё задачи…' : '');
+  $('open').setAttribute('aria-pressed', String(!closed));
+  $('closed').setAttribute('aria-pressed', String(closed));
+  let data;
+  try { data = await call('list', { offset, closed, account_id: user?.id }); }
+  catch (error) {
+    if (!append) { blank('Не удалось загрузить задачи', 'Проверьте подключение или API-ключ и обновите доску.'); $('key').hidden = false; }
+    throw error;
+  }
+  tabs.hidden = $('key').hidden = !data.configured;
+  if (!data.configured) {
+    tasks = []; user = null; renderBoard(); $('more').hidden = true; $('account').textContent = 'OpenProject';
+    blank('Подключите OpenProject', 'Привяжите ключ своего аккаунта, чтобы видеть назначенные вам задачи.', true);
+    return;
+  }
+  user = data.user; page = offset; boardTotal = data.total; $('account').textContent = 'OpenProject · ' + user.name;
+  tasks = [...new Map([...tasks, ...data.tasks].map(task => [task.id, task])).values()];
+  renderBoard(); $('count').textContent = tasks.length < data.total ? tasks.length + ' из ' + data.total : 'Всего ' + data.total;
+  $('more').hidden = !data.more;
+  $('empty').hidden = !!tasks.length;
+  if (!tasks.length) blank(closed ? 'Нет закрытых задач' : 'Нет открытых задач', 'Здесь появятся задачи, назначенные вам в OpenProject.');
+  notice('');
+  if (data.selected_task != null) await openCard(data.selected_task);
+}
+function cardArgs() { return { id:card.id, account_id:user.id }; }
+let codexData, manualFolders, codexTimer, codexRevision = 0, codexRetryDelay = 0;
+function codexNote(text, error = false) {
+  $('codexNote').textContent = text || '';
+  $('codexNote').hidden = !text;
+  $('codexNote').classList.toggle('error',error);
+}
+function updateCodexStart() {
+  const targets = codexData?.scopeResolved ? codexData.selectedFolders : manualFolders;
+  const selected = (codexData?.repositories || []).filter(repo => targets?.includes(repo.folder));
+  const idle = selected.filter(repo => repo.status === 'idle' && !repo.threadId);
+  $('codexStart').hidden = closed || !idle.length || selected.some(repo => repo.status === 'unbound');
+  $('codexStart').textContent = idle.length > 1 ? 'Создать чаты в выбранных проектах' : 'Создать чат задачи';
+}
+function showCodexProject(readError) {
+  const repos = codexData?.repositories || [];
+  const list = $('codexRepos');
+  list.replaceChildren();
+  for (const repo of repos) {
+    const selected = codexData.selectedFolders.includes(repo.folder);
+    if ((codexData.scopeResolved || closed) && !selected && ['idle','unbound','project_blocked'].includes(repo.status) && !repo.threadId) continue;
+    const row = el('div','','codex-repo'), line = el('div','','codex-line');
+    const sameName = repos.some(other => other.folder !== repo.folder && other.label.toLowerCase() === repo.label.toLowerCase());
+    row.setAttribute('role','group'); row.setAttribute('aria-label',sameName ? repo.label+' · '+repo.folder : repo.label);
+    const selectable = !closed && !readError && !codexData.scopeResolved && !['unbound','project_blocked'].includes(repo.status);
+    const label = el(selectable ? 'label' : 'span',repo.label);
+    label.title = repo.folder;
+    if (sameName) label.append(' ',el('small',repo.folder,'muted'));
+    if (selectable) {
+      const check = document.createElement('input');
+      check.type = 'checkbox'; check.checked = manualFolders.includes(repo.folder);
+      check.onchange = () => {
+        manualFolders = manualFolders.filter(folder => folder !== repo.folder);
+        if (check.checked) manualFolders.push(repo.folder);
+        updateCodexStart();
+      };
+      label.prepend(check);
+    }
+    line.append(label);
+    if (repo.branch) line.append(el('span','Ветка · '+repo.branch,'codex-branch'));
+    const needsAttention = !readError && repo.status === 'needs_attention';
+    if (repo.threadId) {
+      const openLabel = needsAttention ? 'Продолжить в Codex' : 'Открыть чат задачи';
+      line.append(button(openLabel,async () => {
+        if (needsAttention && !closed) applyCodexInfo(await call('codex-start',{...cardArgs(),folder:repo.folder}));
+        await call('codex-open',{...cardArgs(),folder:repo.folder});
+      }));
+    }
+    if (!closed && !readError && repo.status === 'error') line.append(button('Повторить запуск',() => startCodex({folder:repo.folder})));
+    row.append(line);
+    let note = repo.message;
+    if (!note && repo.status === 'unbound') note = 'Выберите проект для этого репозитория в настройках агента.';
+    if (!note && needsAttention) note = 'Codex ждёт вашего ответа в чате задачи.';
+    if (!note && repo.status === 'starting') note = 'Запускаем чат задачи…';
+    if (!note && repo.status === 'running') note = 'Codex работает над задачей.';
+    if (!repo.registered && !note && !sameName) note = repo.folder;
+    if (note && !readError) row.append(el('p',note,['error','project_blocked'].includes(repo.status) ? 'codex-note error' : 'codex-note'));
+    list.append(row);
+  }
+  if (readError) {
+    $('codexStart').hidden = true;
+    codexNote('Не удалось обновить статус Codex. '+readError.message+'\nСледующая проверка через '+(codexRetryDelay/1000)+' с.',true);
+  } else {
+    updateCodexStart();
+    codexNote(codexData ? codexData.message : 'Ищем локальные проекты…');
+  }
+}
+function applyCodexInfo(data) {
+  if (!data || !Array.isArray(data.repositories) || !Array.isArray(data.selectedFolders))
+    throw Error('Не удалось прочитать список проектов Codex. Перезапустите Пачку AI и откройте карточку снова.');
+  codexData = data;
+  manualFolders = data.scopeResolved ? undefined :
+    (manualFolders ?? data.selectedFolders).filter(path => data.repositories.some(repo => repo.folder === path && !['unbound','project_blocked'].includes(repo.status)));
+  codexRetryDelay = 0;
+  showCodexProject();
+  if (data.repositories.some(repo => repo.status === 'starting'))
+    codexTimer = setTimeout(readCodexInfo,2500);
+  else if (data.repositories.some(repo => repo.status === 'running'))
+    codexTimer = setTimeout(readCodexInfo,10000);
+}
+async function readCodexInfo() {
+  clearTimeout(codexTimer);
+  if (!card) return;
+  const revision = ++codexRevision;
+  try {
+    const data = await call('codex-info',cardArgs());
+    if (revision === codexRevision) applyCodexInfo(data);
+  } catch (error) {
+    if (revision !== codexRevision) return;
+    codexRetryDelay = Math.min(30000,codexRetryDelay ? 2*codexRetryDelay : 3000);
+    showCodexProject(error);
+    codexTimer = setTimeout(readCodexInfo,codexRetryDelay);
+  }
+}
+async function startCodex(selection) {
+  clearTimeout(codexTimer); ++codexRevision;
+  codexNote('Передаём ТЗ в Codex…');
+  try { applyCodexInfo(await call('codex-start',{...cardArgs(),...selection})); }
+  catch (error) { notice(error.message,true); await readCodexInfo(); }
+}
+$('codexStart').onclick = () => run(() => startCodex(codexData.scopeResolved ? {} : {folders:manualFolders}));
+const allowedTags = new Set('p br strong b em i del ul ol li blockquote pre code h1 h2 h3 h4 table thead tbody tr th td hr'.split(' '));
+function formatted(node,raw,html) {
+  node.textContent = raw;
+  node.classList.toggle('formatted',Boolean(html));
+  if (!html) return;
+  const template = document.createElement('template'); template.innerHTML = html;
+  function copy(source,target) {
+    for (const child of source.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) { target.append(child.textContent); continue; }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = child.localName;
+      if (['script','style','iframe','object','template'].includes(tag)) continue;
+      if (tag === 'img') { target.append(child.getAttribute('alt') || '[Изображение]'); continue; }
+      if (tag === 'a') {
+        const href = child.getAttribute('href')?.trim();
+        let url;
+        try { if (href) url = new URL(href, card.url); } catch { /* Keep the label for malformed links. */ }
+        if (url && ['http:', 'https:'].includes(url.protocol)) {
+          const link = document.createElement('a');
+          link.href = url.href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          copy(child,link);
+          target.append(link);
+        } else copy(child,target);
+        continue;
+      }
+      const dest = allowedTags.has(tag) ? document.createElement(tag) : target;
+      if (dest !== target) target.append(dest);
+      copy(child,dest);
+    }
+  }
+  node.replaceChildren(); copy(template.content,node);
+}
+function showCard() {
+  $('ref').textContent = [card.project,card.type,'№'+card.id].filter(Boolean).join(' · ');
+  $('subject').textContent = card.subject;
+  $('facts').textContent = [card.status,card.assignee && 'Исполнитель · '+card.assignee,card.priority && 'Приоритет · '+card.priority,
+    card.due && 'Срок · '+card.due.split('-').reverse().join('.')].filter(Boolean).join('    /    ');
+  formatted($('description'),card.description || 'Описание пока не заполнено.',card.descriptionHtml);
+  $('description').classList.toggle('muted',!card.description && !card.descriptionHtml);
+  $('edit').hidden = $('statusDetail').hidden = !card.editable;
+  $('compose').hidden = !card.commentable;
+  $('readOnlyNotes').hidden = card.commentable;
+}
+function replyTo(text) {
+  quote = text;
+  $('replyText').textContent = text;
+  $('reply').hidden = !text;
+}
+function showComments() {
+  $('comments').replaceChildren();
+  if (!entries.length) $('comments').append(el('p','Комментариев пока нет.','muted'));
+  for (const item of entries) {
+    const row = el('article','','comment'), meta = el('div','','comment-meta');
+    meta.append(el('strong',item.author));
+    if (item.at) meta.append(el('time',new Date(item.at).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'})));
+    if (item.internal) meta.append(el('span','Внутренний комментарий','internal'));
+    const body = el('div','','comment-body'); formatted(body,item.text,item.html); row.append(meta,body);
+    if (card.commentable && !item.internal) {
+      const answer = el('button','Ответить','inline-action');
+      answer.onclick = () => { replyTo(item.author+'\n'+item.text); $('noteInput').focus(); };
+      row.append(answer);
+    }
+    $('comments').append(row);
+  }
+}
+async function readComments(append = false) {
+  const offset = append ? commentPage+1 : 1;
+  const data = await call('comments',{...cardArgs(),offset});
+  entries = [...new Map([...(append ? entries : []),...data.items].map(item => [item.id,item])).values()]
+    .sort((a,b) => String(a.at || '').localeCompare(String(b.at || '')) || a.id-b.id);
+  commentPage = offset; $('moreComments').hidden = !data.more; showComments();
+}
+function editing(on) {
+  $('detailsEdit').hidden = !on; $('description').hidden = on;
+  $('back').disabled = $('edit').disabled = $('statusDetail').disabled = on;
+  $('remote').hidden = true;
+}
+async function openCard(id) {
+  notice('Загружаем задачу…');
+  card = await call('detail',{id,account_id:user.id});
+  $('boardPage').hidden = tabs.hidden = $('key').hidden = $('more').hidden = true;
+  $('detail').hidden = false; $('detail').scrollTop = 0;
+  showCard(); editing(false); entries = []; commentPage = 0;
+  codexData = manualFolders = undefined; codexRetryDelay = 0; showCodexProject(); void readCodexInfo();
+  $('comments').textContent = 'Загружаем обсуждение…'; $('moreComments').hidden = true;
+  const draft = drafts.get(id);
+  $('noteInput').value = draft?.text || ''; replyTo(draft?.quote || ''); $('noteInput').oninput();
+  try { await readComments(); notice(''); }
+  catch (error) { $('comments').textContent = 'Не удалось загрузить обсуждение.'; throw error; }
+}
+async function editFields(preserve = false) {
+  const pendingTitle = $('titleInput').value, pendingDescription = $('descriptionInput').value;
+  const old = card;
+  card = await call('fields',cardArgs());
+  showCard(); editing(card.fields.length > 0);
+  if (!card.fields.length) { notice('Название и описание доступны только для чтения.'); return; }
+  const conflicts = [];
+  for (const [key,input,draft] of [['subject',$('titleInput'),pendingTitle],['description',$('descriptionInput'),pendingDescription]]) {
+    input.readOnly = !card.fields.includes(key);
+    const keep = preserve && !input.readOnly && draft !== old[key];
+    if (keep && card[key] !== old[key] && draft !== card[key])
+      conflicts.push((key === 'subject' ? 'Название в OpenProject' : 'Описание в OpenProject')+'\n'+card[key]);
+    input.value = keep ? draft : card[key];
+  }
+  $('remote').textContent = conflicts.join('\n\n'); $('remote').hidden = !conflicts.length;
+  notice(conflicts.length ? 'Сверьте ваши правки с новой версией перед сохранением.' : '');
+}
+$('back').onclick = () => run(async () => {
+  drafts.set(card.id,{text:$('noteInput').value,quote});
+  clearTimeout(codexTimer); ++codexRevision;
+  card = null; $('detail').hidden = true; $('boardPage').hidden = tabs.hidden = $('key').hidden = false;
+  $('more').hidden = tasks.length >= boardTotal;
+  notice(''); if (changes) { await load(); changes = false; }
+});
+$('edit').onclick = () => run(() => editFields());
+$('discard').onclick = () => { editing(false); notice(''); };
+$('detailsEdit').onsubmit = e => { e.preventDefault(); run(async () => {
+  const values = {...cardArgs(),version:card.version};
+  if (!$('titleInput').readOnly && $('titleInput').value !== card.subject) values.subject = $('titleInput').value;
+  if (!$('descriptionInput').readOnly && $('descriptionInput').value !== card.description) values.description = $('descriptionInput').value;
+  card = await call('edit',values);
+  changes = true; showCard(); editing(false); notice('Изменения сохранены.');
+}); };
+$('noteInput').oninput = () => { $('post').disabled = !$('noteInput').value.trim(); };
+$('dropReply').onclick = () => replyTo('');
+$('moreComments').onclick = () => run(() => readComments(true));
+$('compose').onsubmit = e => { e.preventDefault(); run(async () => {
+  const text = $('noteInput').value.trim();
+  if (!text) return;
+  const prefix = quote ? quote.split('\n').map(line => '> '+line).join('\n')+'\n\n' : '';
+  const saved = await call('comment',{...cardArgs(),text:prefix+text});
+  $('noteInput').value = ''; $('noteInput').oninput(); replyTo(''); drafts.delete(card.id);
+  entries = entries.filter(item => item.id !== saved.id); entries.push(saved); showComments();
+  notice('Комментарий отправлен.');
+}); };
+$('statusDetail').onclick = () => run(() => chooseStatus(card,false));
+async function chooseStatus(task, close) {
+  notice('Загружаем доступные статусы…');
+  const result = await call('workflow', { id: task.id, account_id: user.id });
+  const options = result.options.filter(option => !close || option.closed);
+  if (!options.length) { notice(close ? 'Для этой задачи нет доступного перехода в закрытый статус.' : 'Для этой задачи нет доступных переходов.'); return; }
+  selection = { id: task.id, account_id: user.id, version: result.version };
+  $('taskRef').textContent = 'Задача №' + task.id; $('taskTitle').textContent = task.subject;
+  $('current').textContent = 'Текущий статус · ' + result.current;
+  $('next').replaceChildren(...options.map(item => new Option(item.name, item.id)));
+  $('apply').textContent = close ? 'Закрыть задачу' : 'Сохранить'; notice(''); dialog.showModal();
+}
+$('apply').onclick = () => run(async () => {
+  const values = { ...selection, status_id: Number($('next').value) };
+  dialog.close(); notice('Сохраняем статус…');
+  const result = await call('update', values);
+  const saved = 'Задача №' + result.id + ' · ' + result.status;
+  try {
+    if (card) { changes = true; card = await call('detail',cardArgs()); showCard(); }
+    else await load();
+    notice(saved);
+  }
+  catch (error) { notice(saved + '. Не удалось обновить доску. ' + error.message, true); }
+});
+$('cancel').onclick = () => dialog.close();
+$('open').onclick = () => run(async () => { closed = false; await load(); });
+$('closed').onclick = () => run(async () => { closed = true; await load(); });
+$('refresh').onclick = () => run(async () => {
+  if (!card) { await load(); return; }
+  void readCodexInfo();
+  if (!$('detailsEdit').hidden) { await editFields(true); return; }
+  card = await call('detail',cardArgs()); showCard(); await readComments(); notice('');
+});
+$('more').onclick = () => run(() => load(true));
+$('key').onclick = $('connect').onclick = () => run(async () => { if (await call('key') != null) await load(); });
+run(() => load());
+</script>
+</body></html>

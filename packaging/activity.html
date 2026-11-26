@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Журнал агента</title>
+<style>
+:root{color-scheme:dark;font:14px "Segoe UI",sans-serif;background:#1e1f23;color:#ececf3}
+body{margin:0;height:100dvh;display:flex;flex-direction:column}
+nav{display:flex;align-items:center;gap:4px;padding:12px 16px;border-bottom:1px solid #3b3c43}
+button{font:inherit;cursor:pointer;background:transparent;border:1px solid transparent;border-radius:7px;color:#bcbcc8;padding:6px 12px}
+button[aria-pressed=true],button:hover{background:#33343c;color:white}button:focus-visible{outline:2px solid #aca9ff}
+#status{padding:0 16px;color:#c8c7d1}#status:empty{display:none}#retry{align-self:flex-start;margin-left:10px}
+dialog{background:#26272d;color:inherit;border:1px solid #545560;border-radius:12px;padding:20px;width:min(480px,80vw);max-height:75vh;overflow:auto}
+dialog::backdrop{background:#0009}dialog h2{margin:0;font-size:18px}dialog dt{margin-top:14px;color:#bbb9cb}dialog dd{margin:3px 0;white-space:pre-wrap;overflow-wrap:anywhere}dialog button{background:#363741}
+main{flex:1;min-height:0;position:relative}openai-chatkit{position:absolute;inset:0;display:block;width:100%;height:100%}openai-chatkit[inert]{visibility:hidden}
+</style>
+</head>
+<body>
+<nav aria-label="Фильтр журнала"><button data-filter="all" aria-pressed="true">Все</button><button data-filter="active" aria-pressed="false">В работе</button><button data-filter="sent" aria-pressed="false">Отправлено</button></nav>
+<p id="status" role="status">Загрузка журнала…</p><button id="retry" hidden>Повторить загрузку</button><main></main>
+<dialog id="reason" aria-labelledby="reason-title"><h2 id="reason-title">Почему отправлено?</h2><dl></dl><form method="dialog"><button>Закрыть</button></form></dialog>
+<script>
+'use strict';
+const host = window.chrome.webview;
+const labels = {queued:'В очереди',thinking:'В работе',ready:'Готово к отправке',sending:'Отправляется',sent:'Отправлено',
+  cancelled:'Остановлено',done:'Выполнено',question:'Нужен ваш ответ',draft:'Черновик подготовлен',skipped:'Пропущено',
+  error:'Ошибка',uncertain:'Отправка не подтверждена',interrupted:'Прервано'};
+const stamp = new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+let instance, generation = 0, filter = 'all';
+const pageSize = 16, lists = new Map(), requests = new Map();
+const views = new Map();
+const status = document.querySelector('#status'), retry = document.querySelector('#retry'), main = document.querySelector('main');
+const page = data => ({data, has_more:false, after:null});
+const buttons = [...document.querySelectorAll('[data-filter]')];
+const empty = {all:'Пока нет действий агента.',active:'Сейчас нет активных действий.',sent:'Отправленных сообщений пока нет.'};
+function showError(text) { status.textContent = text; retry.hidden = false; }
+retry.onclick = () => location.reload();
+function action(label,type,id) { return {type:'Button',label,onClickAction:{type,handler:'client',payload:{id}}}; }
+function explain(row) {
+  const details = document.querySelector('#reason dl');
+  details.replaceChildren();
+  function field(label,value) {
+    const dt=document.createElement('dt'), dd=document.createElement('dd');
+    dt.textContent=label; dd.textContent=value; details.append(dt,dd);
+  }
+  field('Источник',row.title);
+  if (row.provenance?.instruction) field('Поручение владельца',row.provenance.instruction);
+  if (row.incoming) field('Сообщение собеседника',row.incoming);
+  field('Модель для ответа',row.provenance ? row.provenance.model || 'По умолчанию в Codex' : 'Нет записи о модели');
+  if (row.provenance) field('Уровень рассуждения',row.provenance.effort || 'Авто');
+  document.querySelector('#reason').showModal();
+}
+function destination(row) {
+  if (row.destination_name) {
+    const labels = {dm:'Личная переписка',chat:'Чат',channel:'Канал',self:'Личная переписка',thread:'Тред'};
+    return {label:labels[row.destination_kind] || 'Переписка',name:row.destination_name};
+  }
+  const saved = (row.recipient || '').trim();
+  if (saved.startsWith('Личные сообщения: ')) return {label:'Личная переписка',name:saved.slice('Личные сообщения: '.length)};
+  if (row.chat && (!saved || /^(?:Личный чат|Чат)\s*№\s*\d+$/iu.test(saved)))
+    return {label:'Чат №'+row.chat,name:'Название чата недоступно'};
+  return saved ? {label:'Адресат',name:saved} : null;
+}
+function item(row,threadId) {
+  const to = destination(row);
+  const children = [
+    ...(to ? [{type:'Caption',value:to.label}] : []),
+    {type:'Title',value:to?.name || row.title,size:'sm'},
+    {type:'Caption',value:[stamp.format(row.updated),labels[row.state] || row.state,to ? row.title : ''].filter(Boolean).join(' · ')}
+  ];
+  if (row.incoming) children.push({type:'Caption',value:'Сообщение собеседника'},{type:'Text',value:row.incoming});
+  else if (['Автоответ','Ответ агента','Ответ на вопрос','Поручение с картинкой'].includes(row.title))
+    children.push({type:'Caption',value:'Исходное сообщение недоступно'});
+  if (row.body) {
+    const label = row.state === 'sent' ? 'Ответ агента' : ['ready','sending','draft'].includes(row.state) ? 'Подготовленный ответ' : 'Действие агента';
+    if (row.incoming || row.state === 'sent') children.push({type:'Caption',value:label});
+    children.push({type:'Text',value:row.body});
+  }
+  const actions = [];
+  if (row.state === 'sent') actions.push(action('Почему отправлено?','explain',row.id));
+  if (row.cancellable) actions.push(action('Остановить','cancel',row.id));
+  if (row.chat) actions.push(action(row.receipt ? 'Открыть сообщение' : 'Открыть чат','open',row.id));
+  if (actions.length) children.push({type:'Row',gap:2,children:actions});
+  return {id:row.id, thread_id:threadId, created_at:new Date(row.at).toISOString(),type:'widget',widget:{type:'Card',children}};
+}
+function select() {
+  for (const [key,view] of views) view.chat.inert = key !== filter;
+  if (!instance || !retry.hidden) return;
+  const selected = views.get(filter);
+  const list = lists.get(filter);
+  status.textContent = selected?.ready ? '' : list?.loaded && !list.items.length ? empty[filter] : 'Загрузка карточек…';
+}
+function refresh(view) {
+  if (!view.ready || view.busy || view.fetched === view.version || views.get(view.key) !== view || !retry.hidden) return;
+  view.busy = true;
+  view.chat.fetchUpdates().catch(e => { if (views.get(view.key) === view) showError(e.message); }).finally(() => {
+    view.busy = false;
+    if (view.fetched !== view.version) setTimeout(() => refresh(view),250);
+  });
+}
+function createView(key,items,signature) {
+  const chat = document.createElement('openai-chatkit');
+  const view = {chat,key,items,signature,version:1,fetched:0,ready:false,busy:false};
+  views.set(key,view);
+  const threadId = instance+'-'+key;
+  chat.dataset.view = key;
+  chat.inert = key !== filter;
+  const url = new URL('activity',location.href).href;
+  const api = async (input,init) => {
+    const request = new Request(input,init);
+    if (request.url !== url || views.get(key) !== view) throw Error('Журнал уже закрыт.');
+    const {type,params} = await request.json();
+    if (params?.thread_id && params.thread_id !== threadId) throw Error('Пространство изменилось.');
+    const result = page(view.items.slice().reverse().map(row => item(row,threadId)));
+    const thread = {id:threadId,title:'Журнал',created_at:new Date().toISOString(),status:{type:'locked',reason:'Журнал действий агента'},items:result};
+    if (type === 'threads.list') return Response.json(page([thread]));
+    if (type !== 'threads.get_by_id' && type !== 'items.list') throw Error('Эта операция недоступна в журнале.');
+    view.fetched = view.version;
+    return Response.json(type === 'items.list' ? result : thread);
+  };
+  chat.addEventListener('chatkit.ready',() => { view.ready = true; refresh(view); select(); });
+  chat.addEventListener('chatkit.error',e => { if (views.get(key) === view) showError(e.detail.error.message); });
+  main.append(chat);
+  chat.setOptions({api:{url,domainKey:'domain_pk_localhost_dev',fetch:api},initialThread:threadId,
+    frameTitle:'Действия агента',locale:'ru',theme:{colorScheme:'dark',density:'compact'},
+    header:{enabled:false},history:{enabled:false},threadItemActions:{feedback:false,retry:false},
+    widgets:{onAction:({type,payload}) => {
+      if (views.get(key) !== view || key !== filter) return;
+      const row = view.items.find(r => r.id === payload.id);
+      if (!row) return;
+      if (type === 'explain') explain(row);
+      if (type === 'cancel' && row.cancellable) host.postMessage({action:type,instance,filter:key,id:row.id});
+      if (type === 'open' && row.chat) host.postMessage({action:type,instance,url:'https://app.pachca.com/chats/'+row.chat+(row.receipt ? '?message='+row.receipt : '')});
+    }}});
+}
+function renderList(key,items) {
+  const view = views.get(key);
+  if (!items.length) {
+    if (view) { views.delete(key); view.chat.remove(); }
+  } else {
+    const signature = JSON.stringify(items);
+    if (!view) createView(key,items,signature);
+    else if (view.signature !== signature) {
+      view.items = items; view.signature = signature; view.version++; refresh(view);
+    }
+  }
+  select();
+}
+function readPage(key,offset) {
+  const id = crypto.randomUUID();
+  return new Promise((resolve,reject) => {
+    requests.set(id,{resolve,reject});
+    host.postMessage({action:'page',instance,id,filter:key,offset,limit:pageSize});
+  });
+}
+async function update(older = false) {
+  if (!instance || !customElements.get('openai-chatkit')) return;
+  const key = filter;
+  if (!lists.has(key)) lists.set(key,{items:[],generation:-1,more:false,loaded:false});
+  const list = lists.get(key);
+  if (list.busy || (older ? !list.more : list.generation === generation)) return;
+  const started = generation;
+  const target = older ? list.items.length + pageSize : Math.max(pageSize,list.items.length);
+  list.busy = true;
+  try {
+    // Reuse the prefix only for an unchanged snapshot. Live actions can move
+    // or leave a filter between requests, shifting all subsequent offsets.
+    let items = older ? list.items.slice() : [], revision = list.revision, more;
+    do {
+      const result = await readPage(key,items.length);
+      if (lists.get(key) !== list) return;
+      if (!older && !items.length && list.loaded && result.revision === list.revision) {
+        list.generation = started;
+        return;
+      }
+      if (items.length && result.revision !== revision) {
+        items = [];
+        continue;
+      }
+      revision = result.revision;
+      items.push(...result.items);
+      more = result.more;
+      if (!more) break;
+    } while (items.length < target);
+    Object.assign(list,{items,revision,more,loaded:true,generation:started});
+    renderList(key,items);
+  } catch (error) {
+    if (lists.get(key) === list && key === filter) showError(error.message);
+  } finally {
+    list.busy = false;
+    if (lists.get(key) === list && key === filter && generation !== started && retry.hidden) update();
+  }
+}
+window.addEventListener('message',event => {
+  if (event.origin !== 'https://cdn.platform.openai.com' || event.data?.type !== 'pachca.history.older') return;
+  const view = views.get(filter), list = lists.get(filter);
+  const frame = view?.chat.querySelector('iframe') || view?.chat.shadowRoot?.querySelector('iframe');
+  if (!frame || event.source !== frame.contentWindow || !list?.more || list.busy || view.fetched !== view.version) return;
+  event.source.postMessage({type:'pachca.history.loading'},event.origin);
+  update(true);
+});
+buttons.forEach(b => b.onclick = () => {
+  filter = b.dataset.filter;
+  for (const button of buttons) button.setAttribute('aria-pressed',String(button === b));
+  select();
+  update();
+});
+host.addEventListener('message',({data}) => {
+  if (data.type === 'error') { showError(data.text); return; }
+  if (data.type === 'offline' || (data.type === 'head' && instance && data.instance !== instance)) {
+    document.querySelector('#reason').close();
+    instance = null; views.clear(); lists.clear(); main.replaceChildren();
+    for (const req of requests.values()) req.reject(Error('Пространство изменилось.'));
+    requests.clear();
+    status.textContent = 'Подключите агента к пространству Пачки.';
+  }
+  if (data.type === 'head') {
+    retry.hidden = true;
+    instance = data.instance; generation++; select(); update();
+  }
+  if (data.type === 'page') {
+    const req = requests.get(data.id);
+    if (data.error) req?.reject(Error(data.error));
+    else req?.resolve(data.result);
+    requests.delete(data.id);
+  }
+});
+host.postMessage({action:'ready'});
+const script=document.createElement('script');
+script.src='https://cdn.platform.openai.com/deployments/chatkit/chatkit.js';
+script.onload=async () => { await customElements.whenDefined('openai-chatkit'); update(); };
+script.onerror=() => showError('Не удалось загрузить ChatKit. Проверьте доступ к CDN OpenAI.');
+document.head.append(script);
+</script></body></html>

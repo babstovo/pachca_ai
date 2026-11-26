@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Настройки агента</title>
+<style>
+:root{color-scheme:dark;--page:#1e1f23;--side:#191a1e;--line:#34363e;--field:#292a31;--text:#eeeef3;--muted:#ababba;--accent:#a8afff;--primary:#4b55ed;font:14px/1.45 "Segoe UI",sans-serif;color:var(--text);background:var(--page)}
+*{box-sizing:border-box}body{margin:0;display:grid;grid-template-columns:192px minmax(0,1fr);height:100vh}button,input,textarea,select{font:inherit;color:inherit}button,select{cursor:pointer}button{background:var(--field);border:1px solid var(--line);border-radius:6px;padding:6px 12px}button:hover:not(:disabled),select:hover:not(:disabled){border-color:#626576}button:disabled,input:disabled,select:disabled,textarea:disabled{opacity:.5;cursor:default}button:focus-visible,select:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}aside{display:flex;flex-direction:column;background:var(--side);padding:24px 12px 16px;border-right:1px solid var(--line);min-height:0}aside h1{margin:0 8px 22px;font-size:16px;font-weight:650}nav{display:grid;gap:4px}nav button{border-color:transparent;background:transparent;text-align:left;color:#c0c1ce;padding:8px 10px}nav button[aria-current=page]{background:#303144;color:#e5e6ff;font-weight:600}.connection{margin:auto 8px 0;border-top:1px solid var(--line);padding-top:13px;font-size:12px;color:var(--muted)}.connection p{margin:0 0 6px}.dot{display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;background:#85889b}.online .dot{background:#62c999}.connection button{padding:3px 0;background:transparent;border:0;color:var(--accent);font-size:13px}
+main{min-width:0;overflow:auto;padding:28px clamp(16px,4vw,38px) 18px}h2{font-size:24px;letter-spacing:-.5px;line-height:1.2;margin:0 0 22px;font-weight:640}h3{font-size:16px;margin:24px 0 5px;font-weight:600}.row{display:flex;justify-content:space-between;align-items:center;gap:14px;min-height:62px;border-bottom:1px solid var(--line);padding:12px 0}.row strong,label.field{font-weight:600}.hint,.status{color:var(--muted);font-size:13px}.hint{margin:3px 0 0}.status{min-height:20px;margin:14px 0 0}.error{color:#ffafae}select,textarea{background:var(--field);border:1px solid #41434e;border-radius:6px;padding:7px 9px}select{min-width:148px;max-width:52%;text-overflow:ellipsis}textarea{width:100%;display:block;margin:6px 0 14px;resize:vertical;min-height:52px}label.field{display:block}.switch{appearance:none;flex:0 0 36px;width:36px;height:21px;margin:0;border:1px solid #60616b;border-radius:20px;background:#45464f;cursor:pointer;position:relative}.switch::after{content:"";position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:#f3f3f9}.switch:checked{background:var(--primary);border-color:var(--primary)}.switch:checked::after{left:18px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.primary{background:var(--primary);border-color:var(--primary);color:white;font-weight:600}.link{border:0;background:transparent;color:var(--accent);padding:3px 0}.folder{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}.folder span{overflow-wrap:anywhere}.folder button{font-size:12px}#availability{color:#ddd6b7;margin:0 0 14px}dialog{max-width:360px;background:var(--page);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:18px}dialog p{margin:0}dialog::backdrop{background:#111219b0}[hidden]{display:none!important}
+@media(max-width:620px){body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}aside{padding:9px 14px;border:0;border-bottom:1px solid var(--line);display:block}aside h1{display:none}nav{display:flex;flex-wrap:wrap;gap:1px}nav button{padding:6px 8px}.connection{margin:6px 8px 0;padding:0;border:0;display:flex;align-items:center;gap:10px}.connection p{margin:0}main{padding-top:18px}h2{margin-bottom:12px}}
+#boardUrl,#secret{width:100%;margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid #41434e;background:var(--field)}
+body{grid-template-areas:"menu content" "disconnect content";grid-template-rows:minmax(0,1fr) auto}
+aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
+.agent-footer{grid-area:disconnect;background:var(--side);padding:8px 20px 16px;border-right:1px solid var(--line)}
+#agentButton{background:var(--primary);border-color:var(--primary);color:white;font-weight:600}
+#agentButton.connected{background:#ad3746;border-color:#ad3746}
+#agentButton:hover:not(:disabled){filter:brightness(1.12)}
+@media(max-width:620px){body{grid-template-areas:"menu" "content" "disconnect";grid-template-rows:auto minmax(0,1fr) auto}.agent-footer{padding:10px 14px;border:0;border-top:1px solid var(--line)}}
+.folder{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 0}
+.folder textarea{grid-column:1/-1;margin:0;min-height:38px}
+.folder-title,.project-choice{display:grid;text-align:left;min-width:0}.folder-path{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.folder-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.folder-actions button{padding:4px 7px}
+#projectPicker{width:min(510px,90vw);max-width:90vw}#projectPicker h2{font-size:19px;margin-bottom:12px}
+#projectChoices{display:grid;gap:6px;max-height:46vh;overflow-y:auto}.project-choice{gap:2px;width:100%;overflow-wrap:anywhere}
+.folder-agent{grid-column:1/-1;display:flex;gap:8px 14px;flex-wrap:wrap}.folder-agent label{display:grid;gap:3px;color:var(--muted);font-size:13px;min-width:0;flex:1 1 165px}.folder-agent select{min-width:0;max-width:100%;color:var(--text)}
+</style>
+</head><body>
+<aside><h1>Настройки агента</h1><nav aria-label="Разделы настроек">
+<button data-page="replies" aria-current="page">Ответы</button>
+<button data-page="profile">Рассказать о себе</button>
+<button data-page="projects">Проекты</button>
+<button data-page="tasks">Доска задач</button>
+</nav><div class="connection"><p id="connection" role="status"><span class="dot"></span><span id="codexStatus">Проверяем подключение…</span></p></div></aside>
+<main><div id="availability" role="status" hidden></div>
+<section id="replies"><h2>Ответы</h2>
+<label class="row" for="client">MCP-клиент<select id="client"><option value="codex">Codex</option><option value="copilot">GitHub Copilot (VS Code)</option><option value="custom">Другой MCP-клиент…</option></select></label>
+<p class="hint" id="clientHint" hidden></p>
+<label class="row"><span><strong>Автоответы</strong><br><span class="hint">Агент может отвечать на входящие сообщения от вашего имени.</span></span><input class="switch" type="checkbox" role="switch" id="autoReply" aria-label="Автоответы" disabled></label>
+<label class="row"><span><strong>Подтверждать отправку</strong><br><span class="hint">Показывать черновик перед отправкой сообщения по вашему поручению.</span></span><input class="switch" type="checkbox" role="switch" id="confirm" aria-label="Подтверждать отправку" disabled></label>
+<div id="modelSettings"><h3>Модель Codex</h3>
+<label class="row" for="model">Модель<select id="model" disabled><option>По умолчанию</option></select></label>
+<label class="row" for="effort">Уровень рассуждения<select id="effort" disabled><option>Авто</option></select></label>
+</div>
+<h3>Карточки собеседников</h3><p class="hint">Роль, стиль общения и предпочтения каждого участника.</p>
+<button id="participants" class="link" disabled>Участники и стиль ответов ›</button>
+</section>
+<section id="profile" hidden><h2>Рассказать о себе</h2>
+<label class="field">О себе и своей работе<textarea id="description" maxlength="4000" rows="2" disabled></textarea></label>
+<label class="field">Стиль общения<textarea id="style" maxlength="2000" rows="2" disabled></textarea></label>
+<label class="field">Правила ответов<textarea id="rules" maxlength="4000" rows="5" disabled></textarea></label>
+<div class="actions"><button id="saveProfile" class="primary" disabled>Сохранить</button><button id="reset" disabled>Сбросить по умолчанию</button><button id="cancelProfile" disabled>Отменить правки</button></div></section>
+<section id="projects" hidden><h2>Проекты</h2>
+<label class="row"><span><strong>Доска OpenProject</strong><br><span class="hint">Использовать доску OpenProject для ответов по задачам.</span></span><input id="board" class="switch" type="checkbox" role="switch" aria-label="Доска OpenProject" disabled></label>
+<label class="row"><span><strong>Автосоздание чатов задач</strong><br><span class="hint">Передавать ТЗ и вложения в выбранные проекты Codex. Для начала работы откройте чат задачи и напишите «Начинай».</span></span><input id="autoTaskWork" class="switch" type="checkbox" role="switch" aria-label="Автосоздание чатов задач" disabled></label>
+<button id="loginBoard" class="link" disabled>Войти через браузер ›</button>
+<h3>Локальные проекты Codex</h3><p class="hint">Выберите проекты из боковой панели Codex. В них Пачка будет открывать чаты задач по соответствующим репозиториям.</p><div id="folders"></div>
+<p id="folderModelStatus" class="hint" hidden></p><button id="retryModels" class="link" hidden>Загрузить модели ещё раз</button>
+<div class="actions"><button id="folder" disabled>Добавить проект Codex</button></div>
+<div class="actions"><button id="saveProjects" class="primary" disabled>Сохранить</button><button id="cancelProjects" disabled>Отменить правки</button></div></section>
+<section id="tasks" hidden><h2>Доска задач</h2>
+<div class="row"><span><strong>Подключение OpenProject</strong><br><span id="keyState" class="hint">Для вашего пространства Пачки</span></span><button id="key" disabled>Настроить</button></div>
+<label class="row"><span><strong>Показывать панель при старте Пачки</strong><br><span class="hint">Крестик выключает автопоказ, кнопка «Мои задачи» включает его снова.</span></span><input id="taskStartup" class="switch" type="checkbox" role="switch" aria-label="Показывать панель при старте Пачки" disabled></label>
+<label class="row" for="taskDestination">Открывать задачу со стикера<select id="taskDestination" disabled><option value="pachca">В Пачке</option><option value="browser">В браузере</option></select></label>
+<h3>Сброс настроек панели</h3><p class="hint">Панель вернётся наверх экрана, к исходному размеру. Автопоказ включится, задачи будут открываться в Пачке.</p>
+<div class="actions"><button id="resetTaskPanel" disabled>Сбросить настройки панели</button></div></section>
+<p id="notice" class="status" role="status"></p><button id="retry" class="link" hidden>Повторить загрузку</button></main>
+<footer class="agent-footer"><button id="agentButton" disabled>Подключить агента</button></footer>
+<dialog id="discard"><p>Закрыть настройки без сохранения правок?</p><div class="actions"><button id="stay" autofocus>Продолжить правку</button><button id="leave">Не сохранять</button></div></dialog>
+<dialog id="projectPicker" aria-labelledby="pickerTitle"><h2 id="pickerTitle">Выберите проект Codex</h2>
+<p id="pickerExisting" class="hint" hidden>Описание, модель и уровень рассуждения привязаны к этому репозиторию и сохранятся при выборе проекта.</p>
+<div id="projectChoices"></div><p id="pickerNotice" class="hint" role="status"></p>
+<div class="actions"><button id="refreshPicker">Обновить список</button><button id="closePicker">Отмена</button></div></dialog>
+<dialog id="keyDialog" aria-labelledby="keyTitle"><h2 id="keyTitle">Подключение OpenProject</h2>
+<label class="field" for="boardUrl">Ссылка на доску</label>
+<input type="url" id="boardUrl" autocomplete="off" spellcheck="false" placeholder="https://example.org/projects/demo/boards/1">
+<p class="hint" style="margin-bottom:14px">Скопируйте адрес открытой доски из браузера.</p>
+<label class="field" for="secret">API-ключ для вашего сервера OpenProject</label>
+<input type="password" id="secret" maxlength="256" autocomplete="off" spellcheck="false">
+<p class="status" id="keyNotice" role="status"></p>
+<div class="actions"><button id="saveKey" class="primary" disabled>Проверить и сохранить</button><button id="removeKey">Удалить ключ</button><button id="closeKey">Отмена</button></div></dialog>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const pages = ['replies','profile','projects','tasks'];
+const fields = ['description','style','rules'];
+const levels = {none:'Без рассуждения',minimal:'Минимальный',low:'Лёгкий',medium:'Средний',high:'Высокий',xhigh:'Очень высокий',max:'Максимальный',ultra:'Ультра'};
+const data = {}, loading = new Set(), errors = {}, pending = new Map(), notes = {};
+let state = {}, page = 'replies', seq = 0, working = false, dirtyProfile = false, dirtyProjects = false, folders = [];
+let pendingModel,sessionVersion=0,clientChosen=false;
+let folderDescriptions = {}, folderAgents = {}, folderProjects = {};
+let pickerFolder, pickerRevision = 0;
+const send = message => chrome.webview.postMessage(message);
+function call(action, args = {}) {
+    const request = ++seq;
+    return new Promise((resolve,reject) => { pending.set(request,{resolve,reject}); send({request,action,...args}); });
+}
+function notice(section,text,error=false) { notes[section] = {text,error}; if(section===page) showNotice(); }
+function showNotice() {
+    const note = notes[page] || {};
+    $('notice').textContent = errors[page] || note.text || '';
+    $('notice').classList.toggle('error',Boolean(errors[page] || note.error));
+    $('retry').hidden = !errors[page] || !state.online;
+}
+function trackChanges() {
+    dirtyProfile = Boolean(data.profile && fields.some(k => $(k).value !== data.profile[k].replace(/\r\n/g,'\n')));
+    dirtyProjects = Boolean(data.projects && ($('board').checked !== data.projects.openproject ||
+        $('autoTaskWork').checked !== Boolean(data.projects.autoTaskWork) ||
+        JSON.stringify(folders)!==JSON.stringify(data.projects.folders) ||
+        folders.some(path => (folderDescriptions[path] || '') !== (data.projects.folderDescriptions?.[path] || '') ||
+          ['id','name'].some(key => folderProjects[path]?.[key] !== data.projects.folderProjects?.[path]?.[key]) ||
+          ['model','effort'].some(key => (folderAgents[path]?.[key] || '') !== (data.projects.folderAgents?.[path]?.[key] || '')))));
+    send({action:'dirty',value:dirtyProfile || dirtyProjects});
+    controls();
+}
+function controls() {
+    $('taskStartup').disabled = $('taskDestination').disabled = $('resetTaskPanel').disabled = working || !state.taskPanel;
+    $('taskStartup').checked = Boolean(state.taskPanel?.autoOpen);
+    $('taskDestination').value = state.taskPanel?.inBrowser ? 'browser' : 'pachca';
+    const enabled = Boolean(state.online && !working);
+    const available = !working && !state.changed && !state.connecting && data.replies && state.codex === 'ready' && !state.generating;
+    $('autoReply').checked = Boolean(state.autoReply);
+    $('confirm').checked = Boolean(state.confirm);
+    $('autoReply').disabled = !enabled;
+    $('confirm').disabled = !enabled || state.generating;
+    $('model').disabled = !available;
+    $('effort').disabled = !available || $('effort').options.length < 2;
+    $('participants').disabled = !enabled;
+    for(const k of fields) $(k).disabled = !enabled || !data.profile;
+    $('reset').disabled = !enabled || !data.profile;
+    $('saveProfile').disabled = $('cancelProfile').disabled = !enabled || !dirtyProfile;
+    for(const id of ['board','folder','loginBoard','autoTaskWork']) $(id).disabled = !enabled || !data.projects;
+    $('key').disabled = working || !state.taskPanel || state.changed || state.connecting || state.disconnecting;
+    $('folder').disabled ||= folders.length >= 12;
+    $('loginBoard').disabled ||= Boolean(data.projects?.api_key);
+    $('saveProjects').disabled = $('cancelProjects').disabled = !enabled || !dirtyProjects;
+    for(const field of $('folders').querySelectorAll('button,textarea')) field.disabled = !enabled;
+    for(const field of $('folders').querySelectorAll('select')) field.disabled = !enabled || !data.replies?.items?.length || field.options.length < 2;
+    $('folderModelStatus').hidden = !folders.length || Boolean(data.replies?.items?.length);
+    $('folderModelStatus').textContent = errors.replies || (loading.has('replies') ? 'Загружаем модели Codex…' : 'Список моделей доступен после подключения Codex.');
+    $('retryModels').hidden = !folders.length || !state.online || !errors.replies;
+    $('availability').hidden = !state.changed && !state.connectionError;
+    $('availability').textContent = state.changed ? 'Пространство изменилось. Откройте настройки заново.' : state.connectionError || '';
+    const attached=Boolean(state.signedIn||state.cliLinked),changing=state.connecting||state.disconnecting;
+    const client=$('client').value;
+    $('client').disabled=attached||working||changing;
+    $('modelSettings').hidden=client!=='codex';
+    $('clientHint').hidden=client==='codex';
+    $('clientHint').textContent=client==='custom'?'При подключении выберите JSON-файл с настройками серверов MCP. Модель выбирается в вашем клиенте.':'Модель для инструментов Пачки выбирается в GitHub Copilot.';
+    $('agentButton').textContent=state.disconnecting?'Отключение…':state.connecting?'Подключение…':attached?'Отключить агента':'Подключить агента';
+    $('agentButton').classList.toggle('connected',attached);
+    $('agentButton').disabled=working||changing||(client==='codex'&&(!state.codex||(!attached&&state.checking&&state.codex!=='ready')))||state.changed||state.generating||dirtyProfile||dirtyProjects;
+    $('connection').classList.toggle('online',attached&&(state.online||state.cliLinked));
+    const clientStatus=client==='codex'?'Codex · MCP подключён':client==='copilot'?'Copilot · MCP настроен':'MCP-клиент настроен';
+    $('codexStatus').textContent=changing?'Меняем подключение…':state.cliLinked?'Codex · MCP через CLI':attached&&state.online?clientStatus:attached?'Связь с агентом прервана':'Агент отключён';
+    showNotice();
+}
+function setEfforts(select,item,value,label,keepUnavailable=false) {
+    const options = [new Option(label,'')];
+    for(const level of item?.efforts || []) options.push(new Option(levels[level] || level,level));
+    if(keepUnavailable && value && !options.some(o=>o.value===value))
+        options.push(new Option((levels[value] || value)+' (недоступен)',value));
+    select.replaceChildren(...options);
+    select.value = options.some(o=>o.value===value) ? value : '';
+}
+function modelItem(model) {
+    const list = data.replies?.items || [];
+    return model ? list.find(x=>x.id===model) : list.find(x=>x.is_default);
+}
+function efforts(model,value) {
+    const item = modelItem(model), suffix = levels[item?.default_effort];
+    setEfforts($('effort'),item,value,suffix ? 'Авто · '+suffix : 'Авто');
+}
+function setModels(select,selected,defaultLabel) {
+    const items = data.replies?.items || [];
+    const options = [new Option(defaultLabel,''),...items.map(i=>new Option(i.label,i.id))];
+    if(selected && !items.some(i=>i.id===selected)) options.push(new Option(selected+' (недоступна)',selected));
+    select.replaceChildren(...options);
+    select.value = selected || '';
+}
+function renderModels() {
+    const {selected,effort} = data.replies;
+    setModels($('model'),selected,'По умолчанию');
+    efforts(selected,effort);
+    if(data.projects) renderFolders();
+}
+function fillProfile(value) { for(const k of fields) $(k).value = value[k] || ''; }
+function folderAgentFields(path) {
+    const group = document.createElement('div');
+    group.className = 'folder-agent';
+    function selector(title) {
+        const label = document.createElement('label'), select = document.createElement('select');
+        label.textContent = title; select.setAttribute('aria-label',title+' · '+path);
+        label.append(select); group.append(label); return select;
+    }
+    const model = selector('Модель для задач'), effort = selector('Уровень рассуждения');
+    const saved = folderAgents[path] || {};
+    setModels(model,saved.model,'Из общих настроек');
+    function updateEffort(value,keepUnavailable) {
+        const item = modelItem(model.value || data.replies?.selected);
+        setEfforts(effort,item,value,'Из общих настроек',keepUnavailable);
+    }
+    function update() {
+        if(model.value || effort.value) folderAgents[path] = {model:model.value,effort:effort.value};
+        else delete folderAgents[path];
+        trackChanges();
+    }
+    updateEffort(saved.effort,true);
+    model.onchange = () => { updateEffort(effort.value,false); update(); };
+    effort.onchange = update;
+    return group;
+}
+function renderFolders() {
+    $('folders').replaceChildren(...folders.map((name,i)=>{
+        const row = document.createElement('div'), label = document.createElement('div'), actions = document.createElement('div');
+        const project = folderProjects[name], title = document.createElement('strong'), path = document.createElement('span');
+        row.className = 'folder'; label.className = 'folder-title'; actions.className = 'folder-actions';
+        title.textContent = project?.name || 'Репозиторий без проекта Codex';
+        path.className = 'folder-path'; path.textContent = name; label.append(title,path);
+        const choose = document.createElement('button'), remove = document.createElement('button');
+        choose.textContent = project ? 'Сменить проект' : 'Выбрать проект';
+        choose.setAttribute('aria-label',choose.textContent+' для '+name);
+        choose.onclick = () => openPicker(name);
+        remove.textContent = 'Убрать'; remove.setAttribute('aria-label','Убрать папку '+name);
+        const description = document.createElement('textarea');
+        description.rows = 1; description.maxLength = 500;
+        description.placeholder = 'Описание папки для агента';
+        description.setAttribute('aria-label','Описание папки '+name);
+        description.value = folderDescriptions[name] || '';
+        description.oninput = () => { folderDescriptions[name] = description.value; trackChanges(); };
+        remove.onclick = () => { folders.splice(i,1); delete folderProjects[name]; delete folderDescriptions[name]; delete folderAgents[name]; renderFolders(); trackChanges(); };
+        actions.append(choose,remove); row.append(label,actions,description,folderAgentFields(name)); return row;
+    }));
+}
+function fillProjects() {
+    $('board').checked = data.projects.openproject;
+    $('autoTaskWork').checked = Boolean(data.projects.autoTaskWork);
+    folders = [...data.projects.folders]; folderDescriptions = {...data.projects.folderDescriptions};
+    folderAgents = {...data.projects.folderAgents}; folderProjects = {...data.projects.folderProjects}; renderFolders();
+}
+function folderKey(path) { return path.replaceAll('/','\\').replace(/\\+$/,'').toLowerCase(); }
+async function loadPicker() {
+    const revision = ++pickerRevision;
+    const list = $('projectChoices'), status = $('pickerNotice');
+    list.replaceChildren(); status.classList.remove('error'); status.textContent = 'Загружаем проекты Codex…';
+    $('refreshPicker').disabled = true;
+    try {
+        const {items} = await call('codexProjects');
+        if (!$('projectPicker').open || revision !== pickerRevision) return;
+        let hasLocalProjects = false;
+        for (const project of items) {
+            const roots = project.roots?.length ? project.roots : [project.folder];
+            const seen = new Set();
+            for (const root of roots) {
+                if (!root) continue;
+                hasLocalProjects = true;
+                const key = folderKey(root);
+                if (seen.has(key)) continue;
+                seen.add(key);
+                const existing = folders.find(path => folderKey(path) === key);
+                if (pickerFolder ? existing !== pickerFolder : existing && folderProjects[existing]) continue;
+                const choice = document.createElement('button'), detail = document.createElement('span');
+                choice.className = 'project-choice'; choice.textContent = project.name;
+                choice.disabled = folderProjects[existing]?.id === project.id && folderProjects[existing]?.name === project.name;
+                detail.className = 'folder-path'; detail.textContent = root + (choice.disabled ? ' · Выбран' : '');
+                choice.append(detail);
+                choice.onclick = () => {
+                    const path = existing || root;
+                    if (!existing) folders.push(path);
+                    folderProjects[path] = {id:project.id,name:project.name};
+                    $('projectPicker').close(); renderFolders(); trackChanges();
+                };
+                list.append(choice);
+            }
+        }
+        status.textContent = list.childElementCount ? '' : pickerFolder
+          ? 'В Codex нет доступных локальных проектов для папки '+pickerFolder+'.'
+          : hasLocalProjects ? 'Все доступные репозитории уже добавлены.'
+          : 'Доступных локальных проектов пока нет. Добавьте проект в Codex и обновите список.';
+    } catch (error) {
+        if (!$('projectPicker').open || revision !== pickerRevision) return;
+        status.textContent = 'Не удалось загрузить проекты Codex. '+error.message; status.classList.add('error');
+    } finally {
+        if (revision === pickerRevision) $('refreshPicker').disabled = false;
+    }
+}
+function openPicker(path) {
+    pickerFolder = path;
+    $('pickerExisting').hidden = !path;
+    $('projectPicker').showModal();
+    void loadPicker();
+}
+async function load(section) {
+    if(section==='tasks') return;
+    if(section==='projects') void load('replies');
+    if(section==='replies' && $('client').value!=='codex' && page!=='projects')return;
+    if((!state.online && section!=='replies') || data[section] || errors[section] || loading.has(section) || (section==='replies' && state.codex!=='ready')) return;
+    const token=sessionVersion;
+    loading.add(section); notice(section,'Загрузка…');
+    try {
+        const value = await call(section==='replies' ? state.online?'models':'availableModels' : section);
+        if(token!==sessionVersion)return;
+        data[section]=value;
+        if(section==='replies') renderModels();
+        if(section==='profile') fillProfile(data.profile);
+        if(section==='projects') fillProjects();
+        notice(section,'');
+    } catch(e) { if(token===sessionVersion){delete data[section]; errors[section] = e.message;} }
+    finally { loading.delete(section); controls(); if(token!==sessionVersion)load(page); }
+}
+function select(section) {
+    page = pages.includes(section) ? section : 'replies';
+    for(const k of pages) $(k).hidden = k!==page;
+    for(const b of document.querySelectorAll('[data-page]')) {
+        if(b.dataset.page===page) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+    }
+    controls(); load(page);
+}
+async function change(fn, success='') {
+    if(working) return;
+    const section=page;
+    working=true; notice(section,''); controls();
+    try { await fn(); if(success) notice(section,success); }
+    catch(e) { notice(section,e.message,true); }
+    finally { working=false; controls(); }
+}
+chrome.webview.addEventListener('message',({data:m})=>{
+    if(m.type==='open'){ select(m.section); return; }
+    if(m.type==='state'){
+        if(m.state.signedIn||m.state.cliLinked||!clientChosen)$('client').value=m.state.client||'codex';
+        if(Boolean(state.signedIn)!==Boolean(m.state.signedIn)){
+            sessionVersion++;pendingModel=undefined;delete data.replies;delete errors.replies;
+        }
+        if(state.signedIn && !m.state.signedIn){
+            for(const section of pages){delete data[section];delete errors[section];delete notes[section];}
+            fillProfile({}); folders=[];folderDescriptions={};folderAgents={};folderProjects={};$('autoTaskWork').checked=false;renderFolders();$('keyState').textContent='Для вашего пространства Пачки';
+            $('model').replaceChildren(new Option('По умолчанию',''));$('effort').replaceChildren(new Option('Авто',''));
+        }
+        if(state.codex && state.codex!=='ready' && m.state.codex==='ready'){ delete data.replies; delete errors.replies; }
+        if (!m.state.online && $('projectPicker').open) $('projectPicker').close();
+        state=m.state; controls(); load(page); return;
+    }
+    if(m.type==='confirmClose'){ if(!$('discard').open) $('discard').showModal(); return; }
+    const task=pending.get(m.request); if(!task)return;
+    pending.delete(m.request); if(m.error)task.reject(new Error(m.error));else task.resolve(m.result);
+});
+for(const b of document.querySelectorAll('[data-page]')) b.onclick=()=>select(b.dataset.page);
+$('taskStartup').onchange = () => {
+    const enabled = $('taskStartup').checked;
+    change(() => call('taskStartup', {enabled}), 'Сохранено');
+};
+$('taskDestination').onchange = () => {
+    const inBrowser = $('taskDestination').value === 'browser';
+    change(() => call('taskDestination', {inBrowser}), 'Сохранено');
+};
+$('resetTaskPanel').onclick = () => change(() => call('resetTaskPanel'), 'Исходные настройки панели восстановлены');
+for(const id of ['autoReply','confirm']) $(id).onchange=()=>{
+    const enabled=$(id).checked;
+    change(()=>call(id,{enabled}),'Сохранено');
+};
+function saveModel(){
+    const model=$('model').value, effort=$('effort').value;
+    if(!state.online){pendingModel={model,effort};Object.assign(data.replies,{selected:model,effort});controls();return;}
+    change(async()=>{ try { Object.assign(data.replies,await call('saveModel',{model,effort})); } finally { renderModels(); } },'Сохранено');
+}
+$('model').onchange=()=>{ efforts($('model').value,$('effort').value); saveModel(); };
+$('effort').onchange=saveModel;
+for(const k of fields) $(k).oninput=trackChanges;
+$('reset').onclick=()=>{ fillProfile(data.profile.defaults); trackChanges(); notice('profile','Значения по умолчанию подставлены. Нажмите «Сохранить», чтобы применить.'); };
+$('cancelProfile').onclick=()=>{ fillProfile(data.profile); trackChanges(); notice('profile',''); };
+$('saveProfile').onclick=()=>change(async()=>{
+    const values=Object.fromEntries(fields.map(k=>[k,$(k).value]));
+    Object.assign(data.profile,await call('saveProfile',values)); fillProfile(data.profile); trackChanges();
+},'Правила общения сохранены');
+$('autoTaskWork').onchange=$('board').onchange=trackChanges;
+$('folder').onclick=()=>openPicker();
+$('refreshPicker').onclick=loadPicker;
+$('closePicker').onclick=()=>$('projectPicker').close();
+$('key').onclick=()=>change(async()=>{
+    const result = await call('inspectKey');
+    if (!result) return;
+    $('boardUrl').value=result.boardUrl || ''; $('secret').value=''; $('saveKey').disabled=true; $('removeKey').hidden=!result.configured;
+    $('keyState').textContent=result.configured?'Ключ сохранён':'Ключ не подключён';
+    $('keyNotice').textContent=result.configured?'Вставьте новый ключ, чтобы заменить сохранённый.':'';
+    $('keyDialog').showModal(); (result.boardUrl ? $('secret') : $('boardUrl')).focus();
+});
+function updateKeyButton(){ $('saveKey').disabled=!$('secret').value.trim() || !$('boardUrl').value.trim(); }
+$('secret').oninput=$('boardUrl').oninput=updateKeyButton;
+$('closeKey').onclick=()=>$('keyDialog').close();
+$('keyDialog').onclose=()=>{ $('secret').value=''; };
+$('keyDialog').oncancel=e=>{ if(working)e.preventDefault(); };
+async function changeKey(remove){
+    await change(async()=>{
+        $('boardUrl').disabled=$('secret').disabled=$('closeKey').disabled=$('saveKey').disabled=$('removeKey').disabled=true;
+        $('keyNotice').textContent=remove?'Удаляем ключ…':'Проверяем доступ…';
+        try {
+            const result=await call(remove?'removeKey':'saveKey',remove?{}:{key:$('secret').value.trim(),boardUrl:$('boardUrl').value.trim()});
+            $('keyState').textContent=result.configured?'Ключ сохранён':'Ключ не подключён';
+            if (data.projects) {
+                data.projects.api_key=result.configured;
+                if(result.configured)data.projects.openproject=$('board').checked=true;
+            }
+            $('keyDialog').close(); trackChanges();
+        } catch(e) { $('keyNotice').textContent=e.message; }
+        finally {
+            $('boardUrl').disabled=$('secret').disabled=$('closeKey').disabled=$('removeKey').disabled=false;
+            updateKeyButton();
+        }
+    });
+}
+$('saveKey').onclick=()=>changeKey(false);
+$('removeKey').onclick=()=>changeKey(true);
+$('loginBoard').onclick=()=>change(async()=>{ await call('loginBoard'); $('board').checked=true; trackChanges(); },'Вход выполнен. Сохраните настройки проекта.');
+$('cancelProjects').onclick=()=>{ fillProjects(); trackChanges(); notice('projects',''); };
+$('saveProjects').onclick=()=>change(async()=>{
+    Object.assign(data.projects,await call('saveProjects',{openproject:$('board').checked,autoTaskWork:$('autoTaskWork').checked,folders,folderProjects,folderDescriptions,folderAgents}));
+    fillProjects(); trackChanges();
+},'Настройки проектов сохранены');
+$('client').onchange=()=>{clientChosen=true;controls();load(page);};
+$('agentButton').onclick=()=>change(()=>state.signedIn||state.cliLinked?call('disconnectAgent'):call('connectAgent',
+    {...($('client').value==='codex'?pendingModel:{}),client:$('client').value}));
+$('participants').onclick=()=>change(()=>call('participants'));
+$('retry').onclick=()=>{ delete errors[page]; load(page); };
+$('retryModels').onclick=()=>{ delete errors.replies; load('replies'); };
+$('stay').onclick=()=>$('discard').close();
+$('leave').onclick=()=>send({action:'close'});
+send({action:'ready'});
+</script></body></html>

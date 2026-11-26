@@ -1,0 +1,33 @@
+name: Windows portable release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag and package version differ.' }
+      - name: Build portable executable
+        shell: pwsh
+        run: ./packaging/build-windows.ps1
+      - name: Verify embedded CLI
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path dist/Pachca-AI-win-portable-x64.exe).Path
+          $help = & $exe --help | Out-String
+          if ($LASTEXITCODE -ne 0 -or $help -notmatch 'openproject-tasks') { throw 'Portable CLI failed.' }
+      - name: Publish executable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME dist/Pachca-AI-win-portable-x64.exe --verify-tag --title "Пачка AI $env:GITHUB_REF_NAME" --notes "Скачайте Pachca-AI-win-portable-x64.exe и запустите его. Новые версии доступны через кнопку обновления в шапке клиента."
