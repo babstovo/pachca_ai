@@ -6,10 +6,10 @@ using System.Windows.Forms;
 
 internal sealed partial class PachcaWindow
 {
-    private void OpenTaskBoard(object selectedTask = null, object selectedAccount = null)
+    private void OpenTaskBoard(object selectedTask = null, object selectedAccount = null, bool selectedClosed = false)
     {
         if (taskProfile == null || signingOut || exiting) return;
-        using (var dialog = new TaskWindow(this, taskProfile, selectedTask, selectedAccount)) dialog.ShowDialog(this);
+        using (var dialog = new TaskWindow(this, taskProfile, selectedTask, selectedAccount, selectedClosed)) dialog.ShowDialog(this);
     }
 
     private sealed class TaskWindow : ResourceWindow
@@ -17,12 +17,14 @@ internal sealed partial class PachcaWindow
         private readonly object profile;
         private readonly object selectedAccount;
         private object selectedTask;
+        private readonly bool selectedClosed;
         private bool saving;
 
-        public TaskWindow(PachcaWindow app, object profile, object selectedTask, object selectedAccount) : base(app, "Мои задачи · OpenProject", "Tasks.html", openLink: app.OpenInBrowser)
+        public TaskWindow(PachcaWindow app, object profile, object selectedTask, object selectedAccount, bool selectedClosed) : base(app, "Мои задачи · OpenProject", "Tasks.html", openLink: app.OpenInBrowser)
         {
             this.profile = profile;
             this.selectedTask = selectedTask;
+            this.selectedClosed = selectedClosed;
             this.selectedAccount = selectedAccount;
             FormClosing += (s, e) => { if (saving && e.CloseReason == CloseReason.UserClosing) e.Cancel = true; };
         }
@@ -40,9 +42,10 @@ internal sealed partial class PachcaWindow
                 object result;
                 switch (Convert.ToString(Get(data, "action"))) {
                     case "list":
-                        if (selectedTask != null) data["account_id"] = selectedAccount;
+                        if (selectedTask != null) { data["account_id"] = selectedAccount; data["closed"] = selectedClosed; }
                         var page = await app.Request("desktop-task-board", data);
                         page["selected_task"] = selectedTask;
+                        page["closed"] = data["closed"];
                         selectedTask = null;
                         result = page;
                         break;

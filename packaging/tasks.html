@@ -150,6 +150,9 @@ async function load(append = false) {
     blank('Подключите OpenProject', 'Привяжите ключ своего аккаунта, чтобы видеть назначенные вам задачи.', true);
     return;
   }
+  closed = data.closed ?? closed;
+  $('open').setAttribute('aria-pressed', String(!closed));
+  $('closed').setAttribute('aria-pressed', String(closed));
   user = data.user; page = offset; boardTotal = data.total; $('account').textContent = 'OpenProject · ' + user.name;
   tasks = [...new Map([...tasks, ...data.tasks].map(task => [task.id, task])).values()];
   renderBoard(); $('count').textContent = tasks.length < data.total ? tasks.length + ' из ' + data.total : 'Всего ' + data.total;

@@ -360,7 +360,7 @@ internal sealed partial class PachcaWindow
                     Hide();
                     try {
                         app.ShowWindow();
-                        app.OpenTaskBoard(id, Get(data, "account_id"));
+                        app.OpenTaskBoard(id, Get(data, "account_id"), Equals(Get(data, "closed"), true));
                     } finally {
                         if (!IsDisposed && !app.exiting) { Show(); ResetProfile(); }
                     }
@@ -370,7 +370,7 @@ internal sealed partial class PachcaWindow
             if (action != "list") return;
             try {
                 var result = await app.Request("desktop-task-board", new { profile_id = app.taskProfile,
-                    offset = Get(data, "offset"), account_id = Get(data, "account_id"), closed = false, standalone = app.settingsProfile == null });
+                    offset = Get(data, "offset"), account_id = Get(data, "account_id"), closed = false, overlay = true, standalone = app.settingsProfile == null });
                 if (requested == generation) Post(new { type = "page", generation, result });
             } catch (Exception ex) {
                 if (requested == generation) Post(new { type = "page", generation, error = ex.Message });

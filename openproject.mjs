@@ -405,27 +405,60 @@ export function myAssignedTasks(limit = 50, profile) {
   return readWithProfile(profile, get => assignedPage(get, limit, 1, false));
 }
 
-export async function assignedPage(api, limit, offset, closed, accountId) {
-  if (!Number.isSafeInteger(offset) || offset < 1 || typeof closed !== 'boolean') throw new Error('Укажите страницу доски.');
-  const user = identity(await api('/api/v3/users/me'));
-  if (accountId != null && user.id !== accountId) throw new Error('Аккаунт OpenProject изменился. Обновите доску.');
-  const page = await api('/api/v3/work_packages', { pageSize: limit, offset, sortBy: JSON.stringify([['id', 'desc']]),
-    filters: JSON.stringify([{ assignee: { operator: '=', values: [String(user.id)] } }, { status: { operator: closed ? 'c' : 'o', values: [] } }]) });
-  const items = page._embedded?.elements;
-  if (!Array.isArray(items) || !Number.isSafeInteger(page.total) || items.some(card => card._links?.assignee?.href !== `/api/v3/users/${user.id}`))
-    throw new Error('OpenProject не подтвердил фильтр по исполнителю.');
-  return { user, total: page.total, more: Boolean(page._links?.nextByOffset?.href) || offset * (page.pageSize || limit) < page.total,
-    tasks: items.map(card => ({
-      id: card.id, subject: card.subject, version: card.lockVersion, updated_at: card.updatedAt, status: card._links.status?.title, assignee: user.name,
-      project: card._links.project?.title ?? card._links.workspace?.title, due_date: card.dueDate ?? card.date ?? null,
-      editable: Boolean(card._links.update || card._links.updateImmediately), url: taskUrl(api, card.id),
-    })) };
+async function boardStatuses(api) {
+  const entries = (await api('/api/v3/statuses'))._embedded?.elements;
+  if (!Array.isArray(entries) || entries.some(s => !Number.isSafeInteger(s.id) || typeof s.isClosed !== 'boolean'))
+    throw Error('OpenProject не вернул список статусов.');
+  return entries.map(({id, name, isClosed}) => ({id, name, closed:isClosed}));
 }
 
-export async function assignedTaskBoard(profile, { offset, closed, account_id }) {
+function overlayFile(board, profile) {
+  if (!Number.isSafeInteger(profile) || profile < 1) throw Error('Выберите пространство Пачки.');
+  return join(siteDir(board), `overlay-${boardId(board)}-${profile}.json`);
+}
+
+async function overlaySelection(board, profile) {
+  try { return JSON.parse(await readFile(overlayFile(board, profile), 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+
+export async function overlayStatusSettings(profile, input) {
+  if (input.reset && !configuredBoard()) return {};
+  const board = requireBoard(), file = overlayFile(board, profile);
+  if ('statusIds' in input) {
+    if (!(input.reset === true && input.statusIds === null) && input.boardUrl !== board.href)
+      throw Error('Доска изменилась. Откройте выбор статусов заново.');
+    if (input.statusIds === null) {
+      await unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+    } else {
+      if (!Array.isArray(input.statusIds) || input.statusIds.some(id => !Number.isSafeInteger(id) || id < 1))
+        throw Error('Выберите статусы из списка.');
+      const temp = file + '.' + randomUUID();
+      try {
+        await writeFile(temp, JSON.stringify([...new Set(input.statusIds)]), {mode:0o600});
+        await rename(temp, file);
+      } finally { await unlink(temp).catch(error => { if (error.code !== 'ENOENT') throw error; }); }
+    }
+    return {};
+  }
+  const api = await taskEditor(profile);
+  return {boardUrl:board.href, statuses:await boardStatuses(api), selected:await overlaySelection(board, profile)};
+}
+
+export async function assignedTaskBoard(profile, { offset, closed, account_id, overlay }) {
   const api = await savedApi(profile);
   if (!api) return { configured: false };
-  return { configured: true, ...await assignedPage(api, 50, offset, closed, account_id) };
+  const selected = overlay ? await overlaySelection(api.board, profile) : null;
+  return {configured:true, ...await assignedPage(api, 50, offset, closed, account_id, selected)};
+}
+
+export async function assignedPage(api, limit, offset, closed, accountId, selected = null) {
+  if (!Number.isSafeInteger(offset) || offset < 1 || typeof closed !== 'boolean') throw Error('Укажите страницу доски.');
+  const [{user, tasks}, statuses] = await Promise.all([readBoardTasks(api, accountId), boardStatuses(api)]);
+  const allowed = new Map(statuses.filter(s => selected === null ? s.closed === closed : selected.includes(s.id)).map(s => [s.id,s]));
+  const matches = tasks.filter(task => allowed.has(task.status_id)).sort((a,b) => b.id - a.id);
+  const page = matches.slice((offset - 1) * limit, offset * limit).map(task => ({...task, assignee:user.name, closed:allowed.get(task.status_id).closed}));
+  return {user, total:matches.length, more:offset * limit < matches.length, tasks:page};
 }
 
 async function taskEditor(profile) {
@@ -632,63 +665,51 @@ async function readColumn(get, widget, userId) {
   const {origin} = get.board;
   const queryId = Number(widget.options?.queryId);
   if (!Number.isSafeInteger(queryId) || queryId < 1) throw new Error('У колонки доски отсутствует ID запроса.');
-  const query = await get(`/api/v3/queries/${queryId}`, { pageSize: 100 });
-  let page = query._embedded?.results;
-  const source = page?._links?.self?.href;
-  if (source && page.total > page.count) {
-    const resultsUrl = new URL(source, origin);
-    const savedFilters = resultsUrl.searchParams.get('filters');
-    if (resultsUrl.pathname.endsWith('/work_packages') && savedFilters !== null) {
-      const filters = JSON.parse(savedFilters);
-      if (Array.isArray(filters) && !filters.some(filter => 'assignee' in filter || 'assigned_to' in filter || 'assignee_id' in filter)) {
-        filters.push({ assignee: { operator: '=', values: [String(userId)] } });
-        resultsUrl.searchParams.set('filters', JSON.stringify(filters));
-        resultsUrl.searchParams.set('offset', '1');
-        page = await get(resultsUrl.href);
-      }
-    }
-  }
   const matches = [];
-  const visited = new Set();
   let read = 0;
-  for (;;) {
+  for (let offset = 1; ; offset++) {
+    const query = await get(`/api/v3/queries/${queryId}`, {pageSize:100, offset});
+    const page = query._embedded?.results;
     const cards = page?._embedded?.elements;
     if (!Array.isArray(cards)) throw new Error('OpenProject не вернул карточки колонки.');
+    if (page.offset != null && page.offset !== offset) throw Error('OpenProject вернул неверную страницу колонки.');
     for (const card of cards) {
       if (card._links?.assignee?.href !== `/api/v3/users/${userId}`) continue;
       matches.push({
         id: card.id, subject: card.subject, status: card._links?.status?.title,
+        status_id: Number(card._links.status?.href?.split('/').at(-1)),
+        version:card.lockVersion, updated_at:card.updatedAt, assignee:card._links.assignee.title,
+        project:(card._links.project ?? card._links.workspace)?.title, editable:Boolean(card._links.update || card._links.updateImmediately),
         priority: card._links?.priority?.title, due_date: card.dueDate ?? card.date ?? null,
         url: `${origin}/work_packages/${card.id}`, column: query.name,
       });
     }
     read += cards.length;
     if (!cards.length || read >= page.total) return matches;
-    const base = page._links?.self?.href;
-    const nextUrl = base && new URL(base, origin);
-    if (nextUrl && Number.isSafeInteger(page.offset)) nextUrl.searchParams.set('offset', page.offset + 1);
-    const next = page._links?.nextByOffset?.href ?? nextUrl?.href;
-    if (!next || visited.has(next)) throw new Error('OpenProject не вернул следующую страницу колонки.');
-    visited.add(next);
-    page = await get(next);
   }
+}
+
+async function readBoardTasks(get, accountId) {
+  const [current, grid] = await Promise.all([get('/api/v3/users/me'), get(`/api/v3/grids/${boardId(get.board)}`)]);
+  const user = identity(current);
+  if (accountId != null && user.id !== accountId) throw Error('Аккаунт OpenProject изменился. Обновите доску.');
+  if (grid.id !== boardId(get.board) || !Array.isArray(grid.widgets)) throw new Error('OpenProject не вернул настройки выбранной доски.');
+  const columns = grid.widgets.filter(widget => widget.identifier === 'work_package_query');
+  const grouped = await Promise.all(columns.map(widget => readColumn(get, widget, user.id)));
+  const byId = new Map();
+  for (const card of grouped.flat()) {
+    const { column, ...task } = card;
+    if (byId.has(task.id)) byId.get(task.id).columns.push(column);
+    else byId.set(task.id, { ...task, columns: [column] });
+  }
+  return { board:get.board.href, user, total:byId.size, tasks:[...byId.values()] };
 }
 
 export function myBoardTasks(limit = 50, profile) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Ожидается количество задач от 1 до 100.');
   return readWithProfile(profile, async get => {
-    const [current, grid] = await Promise.all([get('/api/v3/users/me'), get(`/api/v3/grids/${boardId(get.board)}`)]);
-    const user = identity(current);
-    if (grid.id !== boardId(get.board) || !Array.isArray(grid.widgets)) throw new Error('OpenProject не вернул настройки выбранной доски.');
-    const columns = grid.widgets.filter(widget => widget.identifier === 'work_package_query');
-    const grouped = await Promise.all(columns.map(widget => readColumn(get, widget, user.id)));
-    const byId = new Map();
-    for (const card of grouped.flat()) {
-      const { column, ...task } = card;
-      if (byId.has(task.id)) byId.get(task.id).columns.push(column);
-      else byId.set(task.id, { ...task, columns: [column] });
-    }
-    return { board: get.board.href, user, total: byId.size, tasks: [...byId.values()].slice(0, limit) };
+    const result = await readBoardTasks(get);
+    return {...result, tasks:result.tasks.slice(0, limit)};
   });
 }
 

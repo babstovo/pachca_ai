@@ -77,7 +77,7 @@ function saveInbox(entry, superseded = []) {
     const remaining = existing.filter(item => !entry.key || item.key !== entry.key);
     const decisions = remaining.filter(item => item.status === 'no_reply').slice(entry.status === 'no_reply' ? -199 : -200);
     const items = [...decisions, ...remaining.filter(item => item.status !== 'no_reply').slice(entry.status === 'no_reply' ? -100 : -99)
-      .map(item => item.status === 'question' && superseded.includes(item.key) ? { ...item, status: 'superseded' } : item), entry];
+      .map(item => ['question','draft'].includes(item.status) && superseded.includes(item.key) ? { ...item, status: 'superseded' } : item), entry];
     const tempFile = `${inboxFile()}.tmp`;
     await writeFile(tempFile, JSON.stringify(items), { mode: 0o600 });
     await rename(tempFile, inboxFile());
@@ -1372,7 +1372,8 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
           return { profile_id: profileId, ...await saveCommunicationProfile(communicationFile, values) };
         }
         if (command === 'questions') {
-          const pending = (await readInbox()).filter(item => item.status === 'question' && item.profile_id === profileId && item.key).reverse();
+          const pending = (await readInbox()).filter(item => (item.status === 'question' ||
+            (values?.include_drafts === true && item.status === 'draft')) && item.profile_id === profileId && item.key).reverse();
           pending.push(...imageJobs.list('approval').map(job => ({key:imageQuestionKey(job.id), author_id:job.peer,
             destination:{title:job.label}, messages:[{id:job.source,chat_id:job.chat}], incoming_text:job.incoming,
             question:(job.error ? `Предыдущая попытка: ${job.error}\n` : '') + `Сгенерировать картинку по описанию «${job.brief}» и отправить в «${job.label}»? Ответь «да» или «нет».` })));
@@ -1388,6 +1389,41 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
             }
             return { ...item, destination: await destination(original.chat_id, author) };
           }));
+        }
+        if (command === 'review-incoming-draft') {
+          if (!host || !connectedSocket || values?.profile_id !== profileId || !['send','dismiss'].includes(values.action))
+            throw Error('Пространство или действие изменилось. Обновите чат агента.');
+          const draft = (await readInbox()).find(row => row.profile_id === profileId && row.key === values.key && row.status === 'draft');
+          if (!draft || draft.reply !== values.expected || inFlight.has(draft.key))
+            throw Error('Этот черновик уже обработан или изменился.');
+          if (values.action === 'dismiss') {
+            await saveInbox({...draft,status:'dismissed'});
+            return {dismissed:true};
+          }
+          const source = draft.messages[0], recipient = draft.destination.title;
+          const activity = journal.begin({title:'Отправка черновика',recipient,chat:source.chat_id,body:draft.reply,incoming:draft.incoming_text});
+          inFlight.add(draft.key);
+          try {
+            await saveInbox({...draft,status:'sending'});
+            const checkContext = async chat => {
+              const recent = await get('/messages',{chat_id:chat,per:30,direction:'around'});
+              if (chat !== source.chat_id || !Array.isArray(recent)) throw Error('Не удалось проверить переписку.');
+              if (!needsReply(recent,{id:source.id,author_id:draft.author_id,text:source.text},profileId) ||
+                  !recent.some(row => row.id === source.id && row.user_id === draft.author_id && row.chat_id === chat))
+                throw Object.assign(Error('Переписка изменилась. Этот черновик устарел.'),{superseded:true});
+            };
+            let result;
+            try {
+              result = await outgoing(activity,signal,{checkContext},['chat',source.chat_id],draft.reply);
+            } catch (error) {
+              const status = error.deliveryStarted ? 'unconfirmed' : error.superseded ? 'superseded' : 'draft';
+              await saveInbox({...draft,status,error:error.message});
+              if (error.deliveryStarted) throw Error('Отправка не подтверждена. Проверьте исходную переписку.');
+              throw error;
+            }
+            await saveInbox({...draft,status:'accepted',reply_id:result.message_id});
+            return {...result,recipient};
+          } finally { inFlight.delete(draft.key); activity.finish('skipped'); }
         }
         if (command === 'answer-question' || command === 'draft-question' || command === 'delegate-question') {
           const image = selectedImage(values?.key);
@@ -1580,7 +1616,7 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
         };
         let operation = message.operation;
         let autoSignal = AbortSignal.any([controller.signal, message.autoSignal, operation.signal]);
-        if (autoSignal.aborted || (!autoEnabled && !message.imageOnly) || signingOut || imageJobs.seen(message.id)) {
+        if (autoSignal.aborted || (!autoEnabled && !message.imageOnly && !message.draftOnly) || signingOut || imageJobs.seen(message.id)) {
           operation.finish('skipped'); continue;
         }
         let posting = false;
@@ -1683,7 +1719,7 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
             scheduleImages();
             continue;
           }
-          if (message.imageOnly) continue;
+          if (message.imageOnly && !message.draftOnly) continue;
           if (decision.action === 'skip' && hasImage && (await chatInfo(message.chat_id))?.personal && humanAuthor(author))
             decision = { ...decision, action: 'ask', text: imageQuestion(burst) };
           if (autoSignal.aborted) continue;
@@ -1699,7 +1735,10 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
               confirmationTask:confirmation?.manager_confirmation_task,
               profile:profileId, enabled:projects.openproject, signal:autoSignal,
               assess:input => assessTaskAcceptance(input,autoSignal,settings)});
-            if (decision.action === 'close_task') {
+            if (decision.action === 'close_task' && message.draftOnly) {
+              decision = {action:'compose', intent:'Подтверди получение согласования. Не утверждай, что уже изменил задачу.',
+                required:[`#${decision.evidence.id}`]};
+            } else if (decision.action === 'close_task') {
               const {evidence} = decision;
               const id = evidence.id;
               entry.status = 'sending';
@@ -1739,22 +1778,24 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
               decision = {action:'compose',intent:'Сообщи, что источник статуса недоступен. Уточни проект или номер задачи.'};
             } else {
               if (!needsReply(await history(), message, profileId) || autoSignal.aborted) continue;
-              entry.status = 'sending';
-              entry.reply = entry.acknowledgement_text = decision.notice || await writeReply({intent:checkNoticeIntent,recent:recentCheckNotices});
-              await saveInbox(entry);
-              handled.set(key, null);
-              const receipt = await sendReply(entry.acknowledgement_text);
-              recentCheckNotices.push(entry.acknowledgement_text);
-              if (recentCheckNotices.length > 8) recentCheckNotices.shift();
-              operation = replyActivity(message,'thinking');
-              operation.setProvenance(settings);
-              operation.setIncoming(incoming);
-              autoSignal = AbortSignal.any([controller.signal,message.autoSignal,operation.signal]);
-              posting = false;
-              entry.acknowledgement_id = Number(receipt.message_id) || undefined;
-              entry.acknowledgement_sent = true;
-              entry.status = 'checking';
-              await saveInbox(entry);
+              if (!message.draftOnly) {
+                entry.status = 'sending';
+                entry.reply = entry.acknowledgement_text = decision.notice || await writeReply({intent:checkNoticeIntent,recent:recentCheckNotices});
+                await saveInbox(entry);
+                handled.set(key, null);
+                const receipt = await sendReply(entry.acknowledgement_text);
+                recentCheckNotices.push(entry.acknowledgement_text);
+                if (recentCheckNotices.length > 8) recentCheckNotices.shift();
+                operation = replyActivity(message,'thinking');
+                operation.setProvenance(settings);
+                operation.setIncoming(incoming);
+                autoSignal = AbortSignal.any([controller.signal,message.autoSignal,operation.signal]);
+                posting = false;
+                entry.acknowledgement_id = Number(receipt.message_id) || undefined;
+                entry.acknowledgement_sent = true;
+                entry.status = 'checking';
+                await saveInbox(entry);
+              }
               const sourceName = { git: 'Git', both: 'Git и OpenProject', tasks: 'OpenProject' };
               log.add(`Проверяю статус проекта · ${location}`, sourceName[scope]);
               const snapshot = await projectSnapshot(sourceSettings, autoSignal, scope, { profile: profileId,
@@ -1789,7 +1830,14 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
             catch (error) { decision = {action:'ask',text:error.message}; }
             autoSignal.throwIfAborted();
           }
-          if (decision.action === 'reply') {
+          if (decision.action === 'reply' && message.draftOnly) {
+            entry.status = 'draft';
+            entry.reply = decision.text;
+            entry.messages[0].text = message.text;
+            entry.destination = message.destination;
+            operation.finish('draft',decision.text);
+            log.add(`Черновик готов · ${location}`,decision.text);
+          } else if (decision.action === 'reply') {
             // Record the attempt before POST. A timeout or restart must not cause a second reply.
             entry.status = 'sending';
             entry.reply = decision.text;
@@ -1853,7 +1901,7 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
 
     function replyActivity(message,state) {
       const key = `${profileId}:${message.id}`;
-      return journal.begin({title:'Автоответ',recipient:message.destination.title,chat:message.chat_id,
+      return journal.begin({title:message.draftOnly ? 'Черновик ответа' : 'Автоответ',recipient:message.destination.title,chat:message.chat_id,
         source:key,incoming:message.text || (message.has_attachments ? '[Вложение]' : ''),state,onCancel:() => { handled.set(key,null); }});
     }
     async function queueRecord(record, backlogSignal, reviewOnly = false) {
@@ -1876,7 +1924,8 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
       message.destination = await destination(message.chat_id, message.author_id);
       const signal = backlogSignal ?? autoTurn.signal;
       const imageOnly = !autoEnabled && !backlogSignal && requestsImage(message.text);
-      const enqueueAuto = eligible && (autoEnabled || imageOnly) && !signingOut && !signal.aborted &&
+      const draftOnly = Boolean(host) && !autoEnabled && !backlogSignal;
+      const enqueueAuto = eligible && (autoEnabled || imageOnly || draftOnly) && !signingOut && !signal.aborted &&
         autoQueued.get(message.id) !== signal && !handled.has(`${profileId}:${message.id}`) && drafts.length < 2000;
       if (backlogSignal && !enqueueAuto) return false;
       const direction = reviewOnly ? 'Проверка прочитанного личного сообщения' :
@@ -1911,7 +1960,7 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
       if (enqueueAuto) {
         if (autoQueued.size >= 5000) autoQueued.delete(autoQueued.keys().next().value);
         autoQueued.set(message.id, signal);
-        const queued = { ...message, imageOnly, backlog: Boolean(backlogSignal), reviewOnly, autoSignal: signal, readyAt: backlogSignal ? undefined : Date.now() + 6000 };
+        const queued = { ...message, imageOnly, draftOnly, backlog: Boolean(backlogSignal), reviewOnly, autoSignal: signal, readyAt: backlogSignal ? undefined : Date.now() + 6000 };
         const room = drafts.findLastIndex(item => !item.codex && item.chat_id === message.chat_id);
         const previous = drafts[room];
         if (previous?.author_id === message.author_id && previous.autoSignal === signal &&

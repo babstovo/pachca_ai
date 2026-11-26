@@ -26,6 +26,7 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 #projectChoices{display:grid;gap:6px;max-height:46vh;overflow-y:auto}.project-choice{gap:2px;width:100%;overflow-wrap:anywhere}
 .folder-agent{grid-column:1/-1;display:flex;gap:8px 14px;flex-wrap:wrap}.folder-agent label{display:grid;gap:3px;color:var(--muted);font-size:13px;min-width:0;flex:1 1 165px}.folder-agent select{min-width:0;max-width:100%;color:var(--text)}
 </style>
+<style>#statusChoices{display:grid;gap:6px;max-height:44vh;overflow:auto;margin:12px 0}#statusDialog label{display:flex;align-items:center;gap:7px}</style>
 </head><body>
 <aside><h1>Настройки агента</h1><nav aria-label="Разделы настроек">
 <button data-page="replies" aria-current="page">Ответы</button>
@@ -37,7 +38,7 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 <section id="replies"><h2>Ответы</h2>
 <label class="row" for="client">MCP-клиент<select id="client"><option value="codex">Codex</option><option value="copilot">GitHub Copilot (VS Code)</option><option value="custom">Другой MCP-клиент…</option></select></label>
 <p class="hint" id="clientHint" hidden></p>
-<label class="row"><span><strong>Автоответы</strong><br><span class="hint">Агент может отвечать на входящие сообщения от вашего имени.</span></span><input class="switch" type="checkbox" role="switch" id="autoReply" aria-label="Автоответы" disabled></label>
+<label class="row"><span><strong>Автоответы</strong><br><span class="hint">Агент отвечает от вашего имени. Когда автоответы выключены, готовые ответы появляются в чате агента как черновики.</span></span><input class="switch" type="checkbox" role="switch" id="autoReply" aria-label="Автоответы" disabled></label>
 <label class="row"><span><strong>Подтверждать отправку</strong><br><span class="hint">Показывать черновик перед отправкой сообщения по вашему поручению.</span></span><input class="switch" type="checkbox" role="switch" id="confirm" aria-label="Подтверждать отправку" disabled></label>
 <div id="modelSettings"><h3>Модель Codex</h3>
 <label class="row" for="model">Модель<select id="model" disabled><option>По умолчанию</option></select></label>
@@ -63,10 +64,15 @@ aside{grid-area:menu;padding-bottom:4px}main{grid-area:content}
 <div class="row"><span><strong>Подключение OpenProject</strong><br><span id="keyState" class="hint">Для вашего пространства Пачки</span></span><button id="key" disabled>Настроить</button></div>
 <label class="row"><span><strong>Показывать панель при старте Пачки</strong><br><span class="hint">Крестик выключает автопоказ, кнопка «Мои задачи» включает его снова.</span></span><input id="taskStartup" class="switch" type="checkbox" role="switch" aria-label="Показывать панель при старте Пачки" disabled></label>
 <label class="row" for="taskDestination">Открывать задачу со стикера<select id="taskDestination" disabled><option value="pachca">В Пачке</option><option value="browser">В браузере</option></select></label>
+<div class="row"><span><strong>Статусы карточек в оверлее</strong><br><span class="hint">По умолчанию видны все ваши открытые задачи с этой доски.</span></span><button id="chooseStatuses" disabled>Выбрать статусы</button></div>
 <h3>Сброс настроек панели</h3><p class="hint">Панель вернётся наверх экрана, к исходному размеру. Автопоказ включится, задачи будут открываться в Пачке.</p>
 <div class="actions"><button id="resetTaskPanel" disabled>Сбросить настройки панели</button></div></section>
 <p id="notice" class="status" role="status"></p><button id="retry" class="link" hidden>Повторить загрузку</button></main>
 <footer class="agent-footer"><button id="agentButton" disabled>Подключить агента</button></footer>
+<dialog id="statusDialog" aria-labelledby="statusTitle"><h2 id="statusTitle">Статусы карточек</h2>
+<label><input type="checkbox" id="allOpen">Все открытые статусы, включая новые</label>
+<div id="statusChoices"></div><p role="status" id="statusError"></p>
+<div class="actions"><button id="applyStatuses" class="primary">Применить</button><button id="cancelStatuses">Отмена</button></div></dialog>
 <dialog id="discard"><p>Закрыть настройки без сохранения правок?</p><div class="actions"><button id="stay" autofocus>Продолжить правку</button><button id="leave">Не сохранять</button></div></dialog>
 <dialog id="projectPicker" aria-labelledby="pickerTitle"><h2 id="pickerTitle">Выберите проект Codex</h2>
 <p id="pickerExisting" class="hint" hidden>Описание, модель и уровень рассуждения привязаны к этому репозиторию и сохранятся при выборе проекта.</p>
@@ -116,6 +122,7 @@ function trackChanges() {
 }
 function controls() {
     $('taskStartup').disabled = $('taskDestination').disabled = $('resetTaskPanel').disabled = working || !state.taskPanel;
+    $('chooseStatuses').disabled = working || !state.taskPanel?.profile || state.changed || state.disconnecting;
     $('taskStartup').checked = Boolean(state.taskPanel?.autoOpen);
     $('taskDestination').value = state.taskPanel?.inBrowser ? 'browser' : 'pachca';
     const enabled = Boolean(state.online && !working);
@@ -355,6 +362,37 @@ $('taskDestination').onchange = () => {
     change(() => call('taskDestination', {inBrowser}), 'Сохранено');
 };
 $('resetTaskPanel').onclick = () => change(() => call('resetTaskPanel'), 'Исходные настройки панели восстановлены');
+let statusContext;
+$('chooseStatuses').onclick = () => change(async () => {
+    const panelProfile = state.taskPanel.profile;
+    const {statuses, selected, boardUrl} = await call('overlayStatuses', {panelProfile});
+    if (panelProfile !== state.taskPanel?.profile) throw Error('Пространство изменилось. Откройте выбор статусов заново.');
+    statusContext = {panelProfile, boardUrl};
+    $('statusError').textContent = '';
+    $('allOpen').checked = selected === null;
+    $('statusChoices').replaceChildren(...statuses.map(status => {
+        const label = document.createElement('label'), box = document.createElement('input');
+        box.type = 'checkbox'; box.value = status.id; box.dataset.open = String(!status.closed);
+        box.checked = selected === null ? !status.closed : selected.includes(status.id);
+        box.onchange = () => { $('allOpen').checked = false; };
+        label.append(box, status.name); return label;
+    }));
+    $('statusDialog').showModal();
+});
+$('allOpen').onchange = () => {
+    if ($('allOpen').checked) for (const box of $('statusChoices').querySelectorAll('input')) box.checked = box.dataset.open === 'true';
+};
+$('cancelStatuses').onclick = () => $('statusDialog').close();
+$('statusDialog').oncancel = event => { if (working) event.preventDefault(); };
+$('applyStatuses').onclick = () => change(async () => {
+    const statusIds = $('allOpen').checked ? null : [...$('statusChoices').querySelectorAll(':checked')].map(box => Number(box.value));
+    $('applyStatuses').disabled = $('cancelStatuses').disabled = true;
+    try {
+        await call('saveOverlayStatuses', {...statusContext, statusIds});
+        $('statusDialog').close(); notice('tasks','Статусы оверлея сохранены');
+    } catch (error) { $('statusError').textContent = error.message; }
+    finally { $('applyStatuses').disabled = $('cancelStatuses').disabled = false; }
+});
 for(const id of ['autoReply','confirm']) $(id).onchange=()=>{
     const enabled=$(id).checked;
     change(()=>call(id,{enabled}),'Сохранено');

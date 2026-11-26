@@ -41,7 +41,8 @@ internal sealed partial class PachcaWindow
         if (!editorReady || exiting || panelEditor.IsDisposed) return;
         var payload = json.Serialize(new { type = "state", thread = PanelThread, available = CanDelegate,
             reply = selectedQuestion == null ? null : new { key = selectedQuestion.Key, title = selectedQuestion.ChatTitle, canClear = !generating && !signingOut },
-            revision = panelRevision, notice = feedback.Text, signedIn = signedIn || connected, connected = connected && codexState == "ready" });
+            revision = panelRevision, notice = feedback.Text, signedIn = signedIn || connected, connected = connected && codexState == "ready",
+            connecting = changingAgent || checkingSavedAgent || signingOut, connectionError = workerError });
         if (payload == lastEditorStatus) return;
         lastEditorStatus = payload;
         panelEditor.CoreWebView2.PostWebMessageAsJson(payload);
@@ -97,7 +98,13 @@ internal sealed partial class PachcaWindow
                         if (String.IsNullOrEmpty(id) || id.Length > 64) return;
                         if (!Equals(Get(data,"thread"), PanelThread)) throw new InvalidOperationException("Профиль или режим чата изменился.");
                         object result = null;
-                        if (type == "history") result = ChatKitHistory(data);
+                        if (type == "connectAgent") {
+                            if (!signedIn && !checkingSavedAgent && !changingAgent && !signingOut) {
+                                await Task.Yield();
+                                await ConnectAgent(client:agentClient, file:clientFile);
+                            }
+                        }
+                        else if (type == "history") result = ChatKitHistory(data);
                         else if (type == "clearReply") {
                             if (!generating && !signingOut && selectedQuestion != null && Equals(Get(data,"key"),selectedQuestion.Key))
                                 SetQuestion(null);
@@ -121,9 +128,10 @@ internal sealed partial class PachcaWindow
 
     private IEnumerable<MessageRow> PanelRows()
     {
-        var questions = pending.Select(q => new MessageRow { PanelId = "q-" + q.Key, Author = "Codex", Date = q.Received,
+        var questions = pending.Where(q => !questionsOnly || !q.IsDraft).Select(q => new MessageRow {
+            PanelId = (q.IsDraft ? "d-" : "q-") + q.Key, Author = "Codex", Date = q.Received,
             Text = q.Text, PendingQuestion = q,
-            Links = new List<PanelLink> {
+            Links = q.IsDraft ? new List<PanelLink> { new PanelLink { Label = "Отправить" }, new PanelLink { Label = "Пропустить" } } : new List<PanelLink> {
                 new PanelLink { Label = "Ответить на вопрос", Open = () => SetQuestion(q) },
                 new PanelLink { Label = "Пропустить", QuestionToSkip = q }
             } });
@@ -144,7 +152,7 @@ internal sealed partial class PachcaWindow
             row.Text == "Вопрос пропущен." || row.Text == "Действие отменено." || row.Text == "Сообщение отправлено." ||
             row.Text.StartsWith("Сообщение отправлено. Получатель — ", StringComparison.Ordinal))) kind = "status";
         return new { id = RowId(row), date = row.Date.Value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture),
-            kind, question = q == null ? null : new { chat = q.ChatTitle, author = q.Author, incoming = q.Incoming },
+            kind, question = q == null ? null : new { chat = q.ChatTitle, author = q.Author, incoming = q.Incoming, draft = q.IsDraft },
             text = row.Text, owner = row.Owner, previews = row.Previews == null ? null : row.Previews.Select(p => Convert.ToBase64String(p)).ToArray(),
             actions = row.Links == null ? null : row.Links.Select(link => link.Label).ToArray() };
     }
@@ -171,6 +179,10 @@ internal sealed partial class PachcaWindow
         int index = Convert.ToInt32(Get(data,"index"));
         if (row == null || row.Links == null || index < 0 || index >= row.Links.Count)
             throw new InvalidOperationException("Действие уже недоступно.");
+        if (row.PendingQuestion != null && row.PendingQuestion.IsDraft) {
+            await ReviewIncomingDraft(row.PendingQuestion, index == 0);
+            return;
+        }
         var link = row.Links[index];
         if (link.QuestionToSkip != null) {
             await DismissQuestion(link.QuestionToSkip);

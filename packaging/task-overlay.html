@@ -39,7 +39,7 @@ main { min-width: 0; max-width: 100%; }
 </aside>
 <main>
   <div id="message" role="status"><span id="caption">Загружаем задачи…</span><span class="fold" title="Потяните, чтобы изменить размер"></span></div>
-  <section id="tray" aria-label="Назначенные мне открытые задачи" hidden></section>
+  <section id="tray" aria-label="Мои задачи с выбранной доски" hidden></section>
 </main>
 <script>
 'use strict';
@@ -106,7 +106,7 @@ function noteFor(task) {
   note.type = 'button'; note.className = 'note';
   note.onclick = event => {
     if (event.detail && (suppressClick || event.target.closest('.fold'))) return;
-    send('open-task', { id:task.id, url:task.url, account_id:account });
+    send('open-task', { id:task.id, url:task.url, closed:task.closed, account_id:account });
   };
   note.style.setProperty('--paper', papers[task.id % papers.length]);
   const ref = ['№' + task.id, task.project].filter(Boolean).join(' · ');
@@ -146,7 +146,7 @@ host.addEventListener('message', ({ data }) => {
     if (!ids.has(task.id)) { notes.append(noteFor(task)); ids.add(task.id); }
   }
   tray.append(notes); tray.hidden = !ids.size;
-  message(tray.hidden ? 'В OpenProject у вас нет открытых задач.' : '');
+  message(tray.hidden ? 'На этой доске нет ваших задач с выбранными статусами.' : '');
   loadNearEnd();
 });
 $('refresh').onclick = () => load(false);

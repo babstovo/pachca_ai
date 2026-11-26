@@ -7,7 +7,7 @@ import { clientBinding, configureClient, clientEnabled } from './mcp-client.mjs'
 import { normalizeCommunicationProfile } from './communication-profile.mjs';
 import { configuredBoard } from './workspace-settings.mjs';
 import { assignedTaskAction, assignedTaskBoard, assignedTaskWorkflow, configuredTaskProfile, hasOpenProjectKey,
-  removeOpenProjectKey, saveOpenProjectKey, updateAssignedTaskStatus } from './openproject.mjs';
+  overlayStatusSettings, removeOpenProjectKey, saveOpenProjectKey, updateAssignedTaskStatus } from './openproject.mjs';
 import { readProjects, saveProjects } from './projects.mjs';
 import { clientDataDir } from './session.mjs';
 
@@ -30,6 +30,10 @@ export async function desktop(command) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  if (command === 'desktop-overlay-statuses') {
+    console.log(JSON.stringify(await overlayStatusSettings(input.profile_id, input)));
+    return;
+  }
   if (command === 'desktop-task-profile') {
     console.log(JSON.stringify({ profile_id: await configuredTaskProfile(input.profiles) }));
     return;
@@ -135,7 +139,7 @@ export async function desktop(command) {
     'desktop-compose': 'compose-prepare', 'desktop-compose-read': 'compose-read', 'desktop-compose-send': 'compose-send',
     'desktop-logout': 'logout', 'desktop-auto-reply': 'auto-reply-setting', 'desktop-projects': 'project-settings',
     'desktop-save-projects': 'save-project-settings', 'desktop-codex-projects':'codex-projects', 'desktop-models': 'codex-models', 'desktop-save-model': 'save-codex-model',
-    'desktop-confirmation': 'send-confirmation', 'desktop-dismiss-question': 'dismiss-question',
+    'desktop-confirmation': 'send-confirmation', 'desktop-dismiss-question': 'dismiss-question', 'desktop-review-draft':'review-incoming-draft',
     'desktop-openproject-status': 'openproject-confirm-status',
     'desktop-task-board': 'task-board', 'desktop-task-workflow': 'task-workflow', 'desktop-task-update': 'task-update',
     'desktop-task-detail':'task-detail','desktop-task-fields':'task-fields','desktop-task-edit':'task-edit',
@@ -164,6 +168,6 @@ export async function desktop(command) {
   }
   const status = (await callWatcher({ command: 'watch-status' }))?.data;
   if (!status?.desktop) return console.log(JSON.stringify({ status }));
-  const questions = await callWatcher({ command: 'questions' });
+  const questions = await callWatcher({ command: 'questions', values:{include_drafts:true} });
   console.log(JSON.stringify({ status, questions: questions?.data }));
 }

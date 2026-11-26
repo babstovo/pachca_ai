@@ -40,16 +40,26 @@ internal sealed partial class PachcaWindow
         var button = new Button { Visible = false, AutoSize = true, Margin = new Padding(4, 7, 12, 7) };
         DecorateButton(button, "Доступно обновление", true);
         toolbar.Controls.Add(button, 1, 0);
-        Shown += async (sender, args) => {
+        string target = Environment.GetEnvironmentVariable("PACHCA_PORTABLE_EXE");
+        if (String.IsNullOrEmpty(target) || !File.Exists(target)) return;
+
+        string availableVersion = null;
+        Asset availableAsset = null;
+        bool checking = false, installing = false;
+        var timer = new System.Windows.Forms.Timer { Interval = (int)TimeSpan.FromMinutes(5).TotalMilliseconds };
+        EventHandler check = async (sender, args) => {
+            if (checking || installing || exiting || IsDisposed) return;
+            checking = true;
             try {
-                string target = Environment.GetEnvironmentVariable("PACHCA_PORTABLE_EXE");
-                if (String.IsNullOrEmpty(target) || !File.Exists(target)) return;
                 Release release;
                 using (var client = ReleaseClient()) {
                     client.Timeout = TimeSpan.FromSeconds(8);
                     string raw = await client.GetStringAsync("https://api.github.com/repos/" + Repository + "/releases/latest");
                     release = new JavaScriptSerializer().Deserialize<Release>(raw);
                 }
+                if (IsDisposed || exiting || installing) return;
+                button.Visible = false;
+                availableAsset = null;
                 if (release == null || release.draft || release.prerelease || release.tag_name == null ||
                     !release.tag_name.StartsWith("v", StringComparison.Ordinal)) return;
                 string version = release.tag_name.Substring(1);
@@ -58,35 +68,44 @@ internal sealed partial class PachcaWindow
                 var asset = (release.assets ?? new Asset[0]).SingleOrDefault(item => item.name == AssetName && item.state == "uploaded");
                 if (asset == null || asset.browser_download_url != url || asset.size <= 0 || asset.size > MaxArchive ||
                     !Regex.IsMatch(asset.digest ?? "", @"\Asha256:[0-9a-f]{64}\z")) return;
-                if (IsDisposed || exiting) return;
+                availableVersion = version;
+                availableAsset = asset;
                 button.Text = "Доступно обновление · " + version;
-                button.Click += async (s,e) => {
-                    button.Enabled = false;
-                    string caption = button.Text;
-                    button.Text = "Скачивание…";
-                    string stage = null;
-                    try {
-                        stage = await Task.Run(() => PrepareUpdate(target, version, asset));
-                        if (!exiting && !IsDisposed) {
-                            if (generating || signingOut || changingAgent)
-                                throw new InvalidOperationException("Дождитесь завершения текущей операции и нажмите кнопку ещё раз.");
-                            await ExitApp(() => {
-                                string arguments = "--apply-portable-update " + Process.GetCurrentProcess().Id + " " +
-                                    Path.GetFileName(stage) + " " + asset.digest.Substring(7);
-                                using (Process.Start(Application.ExecutablePath, arguments)) { }
-                                stage = null; // The helper now owns the download.
-                            });
-                        }
-                    } catch (Exception error) {
-                        if (!IsDisposed) MessageBox.Show(this, error.Message, "Не удалось обновить Пачку");
-                    } finally {
-                        if (stage != null) CleanStage(stage);
-                        if (!IsDisposed) { button.Text = caption; button.Enabled = true; }
-                    }
-                };
                 button.Visible = true;
             } catch (Exception error) { Trace.WriteLine(error); }
+            finally { checking = false; }
         };
+        button.Click += async (s,e) => {
+            if (installing || availableAsset == null || exiting) return;
+            installing = true;
+            button.Enabled = false;
+            string caption = button.Text, version = availableVersion;
+            Asset asset = availableAsset;
+            button.Text = "Скачивание…";
+            string stage = null;
+            try {
+                stage = await Task.Run(() => PrepareUpdate(target, version, asset));
+                if (!exiting && !IsDisposed) {
+                    if (generating || signingOut || changingAgent)
+                        throw new InvalidOperationException("Дождитесь завершения текущей операции и нажмите кнопку ещё раз.");
+                    await ExitApp(() => {
+                        string arguments = "--apply-portable-update " + Process.GetCurrentProcess().Id + " " +
+                            Path.GetFileName(stage) + " " + asset.digest.Substring(7);
+                        using (Process.Start(Application.ExecutablePath, arguments)) { }
+                        stage = null; // The helper now owns the download.
+                    });
+                }
+            } catch (Exception error) {
+                if (!IsDisposed) MessageBox.Show(this, error.Message, "Не удалось обновить Пачку");
+            } finally {
+                installing = false;
+                if (stage != null) CleanStage(stage);
+                if (!IsDisposed) { button.Text = caption; button.Enabled = true; }
+            }
+        };
+        timer.Tick += check;
+        Shown += (s,e) => { timer.Start(); check(s,e); };
+        Disposed += (s,e) => timer.Dispose();
     }
 
     private static void CleanStage(string stage)

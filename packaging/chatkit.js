@@ -7,13 +7,33 @@ const uploadUrl = new URL('upload', location.href).href;
 const requests = new Map();
 const notice = document.querySelector('#status');
 const retry = document.querySelector('#retry');
-let state, view, loaded = false;
+const $ = id => document.getElementById(id);
+let state, view, loaded = false, localMode = false, connecting = false;
+let loader, loadTimer, frameTimer, attempts = 0;
 
 function showError(error) {
   notice.textContent = error.message || String(error);
   retry.hidden = false;
 }
-retry.onclick = () => location.reload();
+retry.onclick = () => {
+  if (localMode && (view?.busy || $('draft').value || $('files').files.length)) {
+    notice.textContent = 'Отправьте или очистите черновик перед переходом в ChatKit.';
+    return;
+  }
+  view = null; localMode = false; attempts = 0;
+  retry.hidden = true; notice.textContent = 'Загрузка ChatKit…';
+  loadChatKit(); sync();
+};
+window.addEventListener('online', () => {
+  if (localMode && state?.signedIn && !view?.busy && !$('draft').value && !$('files').files.length) retry.click();
+});
+$('connect').onclick = async () => {
+  if (connecting || !state || state.signedIn) return;
+  connecting = true; $('connection').textContent = ''; $('connect').disabled = true;
+  try { await native(state.thread, 'connectAgent'); }
+  catch (error) { $('connection').textContent = error.message; }
+  finally { connecting = false; $('connect').disabled = Boolean(state?.connecting); }
+};
 
 function native(thread, type, fields = {}, onItem, onRestore) {
   const id = crypto.randomUUID();
@@ -31,11 +51,12 @@ function itemsFor(row, thread) {
     onClickAction:{type:'pachca.open', handler:'client', payload:{row:row.id, index}}
   }));
   if (row.question) {
-    const {chat, author, incoming} = row.question;
+    const {chat, author, incoming, draft} = row.question;
     const direct = chat?.startsWith('Личные сообщения: ');
     const source = direct ? (author || chat.slice('Личные сообщения: '.length)) : author;
     const children = [
-      {type:'Caption', value:'Вопрос Codex', color:'#c2baff', weight:'semibold'},
+      {type:'Caption', value:draft ? 'Черновик ответа' : 'Вопрос Codex', color:'#c2baff', weight:'semibold'},
+      ...(draft ? [{type:'Text', value:'Кому: ' + chat, size:'sm'}] : []),
       {type:'Text', value:row.text, weight:'semibold'},
     ];
     const quote = [{type:'Caption', value:direct ? 'Личная переписка' : chat || 'Сообщение из Пачки'}];
@@ -176,13 +197,16 @@ function mount(current) {
 
   el.addEventListener('chatkit.ready', () => {
     if (view !== next) return;
+    clearTimeout(frameTimer);
     next.ready = true;
     publishReply();
     notice.textContent = state.notice;
     retry.hidden = true;
     sync();
   });
-  el.addEventListener('chatkit.error', e => { if (view === next) showError(e.detail.error); });
+  el.addEventListener('chatkit.error', e => {
+    if (view === next) { if (next.ready) showError(e.detail.error); else useLocal(); }
+  });
   el.addEventListener('chatkit.response.start', () => { next.responding = true; });
   el.addEventListener('chatkit.response.end', () => {
     if (view !== next) return;
@@ -193,6 +217,7 @@ function mount(current) {
     }
     setTimeout(sync, 0);
   });
+  frameTimer = setTimeout(() => { if (view === next && !next.ready) useLocal(); }, 15000);
   el.setOptions({
     api:{url:endpoint, domainKey:'domain_pk_localhost_dev', fetch:api, uploadStrategy:{type:'direct',uploadUrl}},
     initialThread:thread, locale:'ru', theme:{colorScheme:'dark',density:'compact'},
@@ -208,15 +233,122 @@ function mount(current) {
   });
 }
 
+function useLocal() {
+  clearTimeout(frameTimer);
+  localMode = true; view = null; sync();
+}
+
+function clearLocal() {
+  $('rows').replaceChildren(); $('localForm').reset(); $('localReply').replaceChildren();
+}
+
+function localRow(thread, row) {
+  const article = document.createElement('article'), author = document.createElement('small');
+  author.textContent = row.question?.draft ? 'Черновик ответа · Кому: ' + row.question.chat :
+    row.question ? 'Вопрос Codex' : row.owner ? 'Вы' : row.kind === 'error' ? 'Ошибка' : row.kind === 'status' ? 'Система' : 'Codex';
+  article.append(author, row.text || '');
+  if (row.question) article.append('\n', [row.question.chat,row.question.author,row.question.incoming].filter(Boolean).join('\n'));
+  for (const preview of row.previews || []) {
+    const img = document.createElement('img'); img.alt = 'Вложение'; img.src = 'data:image/png;base64,' + preview; article.append(img);
+  }
+  (row.actions || []).forEach((label,index) => {
+    const button = document.createElement('button'); button.textContent = label;
+    button.onclick = () => native(thread,'action',{row:row.id,index}).catch(showError);
+    article.append(button);
+  });
+  return article;
+}
+
+async function refreshLocal(active) {
+  const revision = state.revision;
+  active.reading = true;
+  const list = $('rows'), nearEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 32;
+  try {
+    let after, more;
+    const rows = [];
+    for (let i = 0; i < active.pages; i++) {
+      const page = await native(active.thread,'history',{limit:16, order:'desc', after});
+      if (view !== active) return;
+      rows.push(...page.rows); more = page.more; after = rows.at(-1)?.id;
+      if (!more || !after) break;
+    }
+    const height = list.scrollHeight, top = list.scrollTop;
+    list.replaceChildren(...rows.reverse().map(row => localRow(active.thread,row)));
+    if (more) {
+      const older = document.createElement('button'); older.textContent = 'Предыдущие сообщения';
+      older.onclick = () => { active.pages++; refreshLocal(active); }; list.prepend(older);
+    }
+    list.scrollTop = nearEnd && active.pages === 1 ? list.scrollHeight : top + list.scrollHeight - height;
+  } catch (error) { if (view === active) showError(error); }
+  finally {
+    active.reading = false; active.revision = revision;
+    if (view === active && state.revision !== revision) sync();
+  }
+}
+
+function syncLocal() {
+  if (view?.thread !== state.thread) {
+    clearLocal();
+    view = {thread:state.thread, pages:1};
+  }
+  const context = $('localReply');
+  context.hidden = !state.reply; context.textContent = state.reply?.title || '';
+  if (state.reply?.canClear) {
+    const key = state.reply.key, thread = state.thread;
+    const clear = document.createElement('button'); clear.textContent = 'Отменить ответ';
+    clear.onclick = () => native(thread,'clearReply',{key}).catch(showError); context.append(clear);
+  }
+  $('send').disabled = !state.available || view.busy;
+  $('draft').disabled = $('files').disabled = Boolean(view.busy);
+  if (!view.reading && view.revision !== state.revision) refreshLocal(view);
+}
+
+$('localForm').onsubmit = async event => {
+  event.preventDefault();
+  if (!localMode || !state.available || view.busy) return;
+  const active = view, text = $('draft').value, files = [...$('files').files];
+  if (!text.trim() && !files.length) return;
+  active.busy = true; syncLocal();
+  try {
+    if (files.length > 3 || files.some(f => f.size > 4194304 || !/^image\/(png|jpeg|webp|gif|bmp)$/.test(f.type)))
+      throw Error('Можно приложить до трёх изображений по 4 МБ.');
+    const images = await Promise.all(files.map(async file => (await asDataUrl(file)).split(',')[1]));
+    if (view !== active) return;
+    let restore = false;
+    await native(active.thread,'submit',{text,images},undefined,() => { restore = true; });
+    if (view === active && !restore) $('localForm').reset();
+  } catch (error) { if (view === active) showError(error); }
+  finally { active.busy = false; if (view === active) syncLocal(); }
+};
+
 function sync() {
-  if (!state || !loaded) return;
-  if (!state.connected && !state.signedIn) {
+  if (!state) return;
+  const detached = !state.connected && !state.signedIn;
+  $('gate').hidden = !detached;
+  $('local').hidden = detached || !localMode;
+  $('chat').hidden = detached || localMode;
+  if (detached) {
+    clearTimeout(frameTimer);
+    if (view) clearLocal();
     view = null;
     document.querySelector('#chat').replaceChildren();
-    notice.textContent = state.notice || 'Подключите локальный Codex в настройках агента.';
+    notice.textContent = ''; retry.hidden = true;
+    $('connect').disabled = connecting || state.connecting;
+    $('connect').textContent = connecting || state.connecting ? 'Подключение…' : 'Подключить агента';
+    if (state.notice || state.connectionError) $('connection').textContent = state.notice || state.connectionError;
     return;
   }
-  if (view?.thread !== state.thread) { mount(state); return; }
+  if (localMode) {
+    $('chat').replaceChildren();
+    if (retry.hidden || !view) notice.textContent = state.notice || 'ChatKit недоступен. Открыт локальный чат.';
+    retry.hidden = false; syncLocal(); return;
+  }
+  if (!loaded) { notice.textContent = 'Загрузка ChatKit…'; return; }
+  if (view?.thread !== state.thread) {
+    clearTimeout(frameTimer);
+    try { mount(state); } catch { useLocal(); }
+    return;
+  }
   if (view.ready && retry.hidden) notice.textContent = state.notice || (state.connected ? '' : 'Нет соединения с локальным Codex.');
   const needsRefresh = active => active.revision !== state.revision || (active.more && active.history.length < active.pages);
   if (view.ready && !view.busy && !view.responding && !view.refreshing && needsRefresh(view)) {
@@ -251,8 +383,20 @@ window.addEventListener('message', e => {
     native(view.thread,'clearReply',{key:e.data.key}).catch(showError);
 });
 host.addEventListener('message', ({data}) => {
-  if (data.type === 'state') { state = data; sync(); publishReply(); return; }
-  if (data.type === 'focus') { if (view?.ready) view.el.focusComposer().catch(() => {}); return; }
+  if (data.type === 'state') {
+    const attached = !state?.signedIn && !state?.connected && (data.signedIn || data.connected);
+    state = data;
+    if (attached) {
+      $('connection').textContent = ''; localMode = false; retry.hidden = true; attempts = 0;
+      if (!loaded && !loader) loadChatKit();
+    }
+    sync(); publishReply(); return;
+  }
+  if (data.type === 'focus') {
+    if (localMode && !$('local').hidden) $('draft').focus();
+    else if (view?.ready) view.el.focusComposer().catch(() => {});
+    return;
+  }
   const pending = requests.get(data.id);
   if (!pending) return;
   if (data.type === 'item') { pending.onItem?.(data.row); return; }
@@ -264,13 +408,26 @@ host.addEventListener('message', ({data}) => {
   }
 });
 
+function loadChatKit() {
+  if (customElements.get('openai-chatkit')) { loaded = true; sync(); return; }
+  if (loader) return;
+  const script = document.createElement('script');
+  loader = script; attempts++;
+  script.src = chatkitOrigin + '/deployments/chatkit/chatkit.js';
+  const failed = () => {
+    if (loader !== script) return;
+    clearTimeout(loadTimer); loader = null; script.remove();
+    if (attempts < 2) setTimeout(loadChatKit, 800);
+    else useLocal();
+  };
+  script.onerror = failed;
+  script.onload = async () => {
+    await customElements.whenDefined('openai-chatkit');
+    if (loader !== script) return;
+    clearTimeout(loadTimer); loader = null; loaded = true; sync();
+  };
+  loadTimer = setTimeout(failed, 8000);
+  document.head.append(script);
+}
+loadChatKit();
 host.postMessage({type:'ready'});
-const script = document.createElement('script');
-script.src = 'https://cdn.platform.openai.com/deployments/chatkit/chatkit.js';
-script.onerror = () => showError(new Error('Не удалось загрузить ChatKit. Проверьте доступ к CDN OpenAI.'));
-script.onload = async () => {
-  await customElements.whenDefined('openai-chatkit');
-  loaded = true;
-  sync();
-};
-document.head.append(script);

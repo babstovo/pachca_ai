@@ -383,7 +383,7 @@ internal sealed partial class PachcaWindow : Form
                 }
             }
             if (attached && rows != null) RenderQuestions(rows);
-            if (attached && rows != null) NotifyAboutQuestions(pending);
+            if (attached && rows != null) NotifyAboutQuestions(pending.Where(q => !q.IsDraft).ToArray());
             UpdateActivity(attached ? Get(state,"activity") as Dictionary<string,object> : null);
             OpenNotifiedQuestion();
             if (exiting || signingOut || generation != accountGeneration) return;
@@ -431,7 +431,7 @@ internal sealed partial class PachcaWindow : Form
 
     private async Task ConnectLocalCodex()
     {
-        if (checkingCodex || connectingCodex || exiting) return;
+        if (connectingCodex || exiting) return;
         connectingCodex = true;
         feedback.Text = "Если откроется браузер, завершите вход в Codex.";
         UpdateSend();
@@ -446,6 +446,7 @@ internal sealed partial class PachcaWindow : Form
                 SetCodexState("error");
                 feedback.Text = error.Message;
             }
+            throw;
         } finally {
             connectingCodex = false;
             codexCheckAt = DateTime.UtcNow.AddSeconds(codexState == "missing" ? 5 : 40);
@@ -611,6 +612,7 @@ internal sealed partial class PachcaWindow : Form
 
     private sealed class Question
     {
+        public bool IsDraft;
         public string Key, Text, Incoming, ChatTitle, Author;
         public long ChatId, MessageId;
         public DateTime Received;
@@ -625,12 +627,13 @@ internal sealed partial class PachcaWindow : Form
             long chatId = Convert.ToInt64(Get(source, "chat_id"));
             var key = Convert.ToString(Get(row, "key"));
             var saved = pending.FirstOrDefault(question => question.Key == key);
-            return new Question { Key = key, Text = Convert.ToString(Get(row, "question")), Incoming = Convert.ToString(Get(row, "incoming_text")),
+            bool isDraft = Equals(Get(row, "status"), "draft");
+            return new Question { Key = key, IsDraft = isDraft, Text = Convert.ToString(Get(row, isDraft ? "reply" : "question")), Incoming = Convert.ToString(Get(row, "incoming_text")),
                 ChatId = chatId, MessageId = Convert.ToInt64(Get(source, "id")), Received = saved == null ? DateTime.Now : saved.Received,
                 ChatTitle = Convert.ToString(Get(target, "title") ?? ("Чат №" + chatId)), Author = Convert.ToString(Get(target, "author")) };
         }).OrderBy(question => question.MessageId).ToArray();
         if (pending.Length == next.Length && pending.Zip(next, (a, b) =>
-            a.Key == b.Key && a.ChatTitle == b.ChatTitle && a.Author == b.Author && a.Text == b.Text && a.Incoming == b.Incoming).All(equal => equal)) {
+            a.Key == b.Key && a.IsDraft == b.IsDraft && a.ChatTitle == b.ChatTitle && a.Author == b.Author && a.Text == b.Text && a.Incoming == b.Incoming).All(equal => equal)) {
             if (!generating && selectedQuestion != null && !pending.Any(item => item.Key == selectedQuestion.Key))
                 SetQuestion(null, false);
             return;
@@ -744,6 +747,23 @@ internal sealed partial class PachcaWindow : Form
             AddCodexMessage("Codex", "Вопрос пропущен.", false, kind:"status");
         } catch (Exception error) { feedback.Text = error.Message; }
         finally { generating = false; UpdateSend(); }
+    }
+
+    private async Task ReviewIncomingDraft(Question draft, bool send)
+    {
+        if (!connected || generating || signingOut || settingsProfile == null)
+            throw new InvalidOperationException("Дождитесь подключения агента и завершения текущей операции.");
+        int generation = accountGeneration;
+        generating = true;
+        UpdateSend();
+        try {
+            var result = await Request("desktop-review-draft", new { profile_id = settingsProfile, key = draft.Key,
+                action = send ? "send" : "dismiss", expected = draft.Text });
+            if (generation != accountGeneration || exiting) return;
+            RemoveQuestion(draft);
+            string note = send ? "Отправлено в «" + Get(result, "recipient") + "»\n" + draft.Text : "Черновик пропущен.";
+            AddCodexMessage("Агент", note, false, kind:"status");
+        } finally { generating = false; UpdateSend(); }
     }
 
     private void RemoveQuestion(Question question)

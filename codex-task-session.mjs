@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { codexConnection, findCodex } from './codex.mjs';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const connect = observer => codexConnection(findCodex(), ['app-server', '--stdio'], observer);
+const connect = observer => codexConnection(findCodex(), undefined, observer);
 
 function pathKey(path) {
   if (!path || !isAbsolute(path)) throw Error('Нужен абсолютный путь к папке проекта Codex.');

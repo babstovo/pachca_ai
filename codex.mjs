@@ -13,11 +13,30 @@ export const reasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xh
 let lastCodex;
 export function findCodex() {
   if (lastCodex && existsSync(lastCodex)) return lastCodex;
+  const seen = new Set();
+  let failure;
+  function runnable(file) {
+    if (!file || !isAbsolute(file) || basename(file).toLowerCase() !== 'codex.exe' || seen.has(file.toLowerCase()) || !existsSync(file)) return false;
+    seen.add(file.toLowerCase());
+    const probe = spawnSync(file, ['--version'], {encoding:'utf8', windowsHide:true, timeout:5000});
+    if (probe.status === 0 && /^codex-cli\s/im.test(probe.stdout)) return true;
+    if (probe.error) failure = {file, code:probe.error.code};
+    return false;
+  }
   const runtime = process.env.CODEX_APP_RUNTIME_CLI_PATH;
-  if (runtime && isAbsolute(runtime) && basename(runtime).toLowerCase() === 'codex.exe' && existsSync(runtime)) return lastCodex = runtime;
-  const where = spawnSync('where.exe', ['codex.exe'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
-  const [onPath] = (where.stdout ?? '').trim().split(/\r?\n/);
-  if (onPath && existsSync(onPath)) return lastCodex = onPath;
+  if (runnable(runtime)) return lastCodex = runtime;
+  const where = spawnSync('where.exe', ['codex'], { encoding:'utf8', windowsHide:true, timeout:5000 });
+  for (const path of (where.stdout ?? '').trim().split(/\r?\n/).filter(Boolean)) {
+    if (runnable(path)) return lastCodex = path;
+    if (!/\.cmd$/i.test(path)) continue;
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+    const vendor = join('vendor', (arch === 'arm64' ? 'aarch64' : 'x86_64') + '-pc-windows-msvc', 'codex', 'codex.exe');
+    const pkg = join(dirname(path), 'node_modules', '@openai', 'codex');
+    for (const root of [pkg, join(pkg, 'node_modules', '@openai', 'codex-win32-' + arch), join(dirname(pkg), 'codex-win32-' + arch)]) {
+      const file = join(root, vendor);
+      if (runnable(file)) return lastCodex = file;
+    }
+  }
   const app = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $ErrorActionPreference = 'Stop'; " +
     "Get-Process -Name Codex -ErrorAction SilentlyContinue | Where-Object Path | ForEach-Object { Split-Path -Parent $_.Path } | Select-Object -Unique; " +
@@ -26,10 +45,11 @@ export function findCodex() {
   for (const root of (app.stdout ?? '').trim().split(/\r?\n/).filter(Boolean)) {
     for (const folder of [join(root, 'app', 'resources'), join(root, 'resources'), ...(basename(root).toLowerCase() === 'resources' ? [root] : [])]) {
       const installed = join(folder, 'codex.exe');
-      if (existsSync(installed)) return lastCodex = installed;
+      if (runnable(installed)) return lastCodex = installed;
     }
   }
-  if (app.error || app.status !== 0 || app.stdout.trim())
+  if (failure) throw new Error(`Windows не смогла запустить Codex CLI (${failure.code}): ${failure.file}. Проверьте доступ к файлу или установите рабочую копию Codex CLI.`);
+  if (app.error || app.status !== 0 || seen.size)
     throw new Error('Не удалось определить путь к Codex. Повторите проверку подключения.');
   const error = new Error('Не найден исполняемый файл Codex в PATH и установленных приложениях Windows.');
   error.code = 'CODEX_NOT_INSTALLED';
@@ -101,7 +121,7 @@ export function configSnippet() {
   return [`[${serverKey}]`, ...Object.entries(config).map(([key, value]) => `${key} = ${JSON.stringify(value)}`)].join('\n');
 }
 
-export function codexConnection(executable, args = ['app-server', '--stdio'], observer = {}) {
+export function codexConnection(executable, args = ['app-server'], observer = {}) {
   const proc = spawn(executable, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   const lines = createInterface({ input: proc.stdout });
   const pending = new Map();

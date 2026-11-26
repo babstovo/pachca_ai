@@ -96,7 +96,7 @@ internal sealed partial class PachcaWindow
             var ok = new Button { Text = "Выбрать", Dock = DockStyle.Bottom, DialogResult = DialogResult.OK };
             DecorateButton(ok,ok.Text,true);
             dialog.Controls.Add(options); dialog.Controls.Add(ok); dialog.AcceptButton = ok;
-            return dialog.ShowDialog(settingsWindow) == DialogResult.OK ? Convert.ToInt64(options.SelectedValue) : 0;
+            return dialog.ShowDialog((Form)settingsWindow ?? this) == DialogResult.OK ? Convert.ToInt64(options.SelectedValue) : 0;
         }
     }
 
@@ -230,7 +230,7 @@ internal sealed partial class PachcaWindow
             if (client != "codex" && client != "copilot" && client != "custom") throw new InvalidOperationException("Выберите MCP-клиент.");
             if (preferred == 0 && client == "codex" && codexState != "ready") {
                 await ConnectLocalCodex();
-                if (codexState != "ready") throw new InvalidOperationException("Для этого агента нужен вход в Codex.");
+                if (codexState != "ready") throw new InvalidOperationException(codexState == "missing" ? "Установите Codex и повторите подключение." : "Для этого агента нужен вход в Codex.");
             }
             long profile = await ChoosePachcaProfile(preferred);
             if (profile == 0) return;

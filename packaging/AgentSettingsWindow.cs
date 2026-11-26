@@ -48,7 +48,7 @@ internal sealed partial class PachcaWindow
                 online = app.connected && !app.signingOut && !changed,
                 changed, signedIn = app.signedIn, cliLinked = app.cliLinked, client = app.agentClient, connectionError = app.workerError, autoReply = app.lastAutoReply,
                 confirm = app.confirmationRequired, generating = app.generating, codex = app.codexState,
-                taskPanel = new { autoOpen = app.OverlayOptions.AutoOpen, inBrowser = app.OverlayOptions.InBrowser },
+                taskPanel = new { autoOpen = app.OverlayOptions.AutoOpen, inBrowser = app.OverlayOptions.InBrowser, profile = app.taskProfile },
                 connecting = app.changingAgent || app.connectingCodex, disconnecting = app.signingOut, checking = app.checkingCodex
             };
             string serialized = app.json.Serialize(state);
@@ -85,6 +85,7 @@ internal sealed partial class PachcaWindow
                 }
                 bool keyAction = action == "inspectKey" || action == "saveKey" || action == "removeKey";
                 bool local = keyAction || action == "taskStartup" || action == "taskDestination" || action == "resetTaskPanel" ||
+                    action == "overlayStatuses" || action == "saveOverlayStatuses" ||
                     action == "connectAgent" || action == "availableModels" || (action == "disconnectAgent" && app.cliLinked);
                 if (!local && (profile == null || !Equals(profile, app.settingsProfile) ||
                     (!app.connected && action != "disconnectAgent") || app.signingOut))
@@ -92,6 +93,14 @@ internal sealed partial class PachcaWindow
                 data["profile_id"] = profile;
                 object result = null;
                 switch (action) {
+                    case "overlayStatuses":
+                    case "saveOverlayStatuses":
+                        if (app.taskProfile == null || app.signingOut || Convert.ToInt64(Get(data,"panelProfile")) != Convert.ToInt64(app.taskProfile))
+                            throw new InvalidOperationException("Пространство изменилось. Откройте выбор статусов заново.");
+                        data["profile_id"] = app.taskProfile;
+                        result = await app.Request("desktop-overlay-statuses", data);
+                        if (action == "saveOverlayStatuses" && app.taskOverlay != null) app.taskOverlay.ResetProfile();
+                        break;
                     case "taskStartup":
                         app.SaveOverlayOptions(Equals(Get(data, "enabled"), true), app.OverlayOptions.InBrowser, app.OverlayOptions.SavedBounds());
                         break;
@@ -99,7 +108,10 @@ internal sealed partial class PachcaWindow
                         app.SaveOverlayOptions(app.OverlayOptions.AutoOpen, Equals(Get(data, "inBrowser"), true), app.OverlayOptions.SavedBounds());
                         break;
                     case "resetTaskPanel":
+                        if (app.taskProfile != null)
+                            await app.Request("desktop-overlay-statuses", new { profile_id = app.taskProfile, reset = true, statusIds = (object)null });
                         app.ResetOverlayOptions();
+                        if (app.taskOverlay != null) app.taskOverlay.ResetProfile();
                         break;
                     case "autoReply":
                         var auto = await app.Request("desktop-auto-reply", data);
