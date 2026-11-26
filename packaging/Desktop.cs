@@ -366,7 +366,7 @@ internal sealed partial class PachcaWindow : Form
             settingsProfile = attached ? Get(state, "profile_id") : null;
             signedIn = settingsProfile != null;
             connected = online;
-            SetTaskProfile(Equals(Get(state, "task_board"), true) ? settingsProfile : null);
+            RefreshTaskProfile();
             if (online) workerError = null;
             tray.Text = online ? "Пачка AI · подключено" : "Пачка AI";
             if (revision == settingsRevision && (settingsWindow == null || !settingsWindow.Writing)) {
@@ -525,6 +525,7 @@ internal sealed partial class PachcaWindow : Form
                         await Request("desktop-openproject-key", new { profile_id = profile, boardUrl = address.Text.Trim(), key = input.Text.Trim() });
                     input.Clear();
                     result = Equals(Get(response, "configured"), true);
+                    SetBoardKeyProfile(result == true ? profile : null, true);
                     working = false;
                     dialog.DialogResult = DialogResult.OK;
                 } catch (Exception error) { notice.Text = error.Message; }
@@ -579,7 +580,6 @@ internal sealed partial class PachcaWindow : Form
         notifiedQuestions.Clear();
         notificationQuestionKey = null;
         nextNotification = DateTime.MinValue;
-        SetTaskProfile(null);
         openNotifiedQuestion = false;
         questionsOnly = false;
         confirmationRequired = true;
@@ -591,6 +591,7 @@ internal sealed partial class PachcaWindow : Form
         shownPanelNotes.Clear();
         RenderCodex();
         settingsProfile = null;
+        RefreshTaskProfile();
         lastAutoReply = false;
     }
 

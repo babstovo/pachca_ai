@@ -38,14 +38,18 @@ export function configuredBoard() {
   }
 }
 
-export function saveBoardAddress(board) {
+export function preferredBoardProfile() {
+  return readSettings().openProjectProfile;
+}
+
+export function saveBoardAddress(board, profile) {
   const file = settingsFile();
   const current = readSettings();
-  if (current.openProjectBoard === board.href) return;
+  if (current.openProjectBoard === board.href && current.openProjectProfile === profile) return;
   mkdirSync(dirname(file), {recursive:true});
   const temp = file + '.' + randomUUID() + '.tmp';
   try {
-    writeFileSync(temp, JSON.stringify({...current, openProjectBoard:board.href}, null, 2), {mode:0o600});
+    writeFileSync(temp, JSON.stringify({...current, openProjectBoard:board.href, openProjectProfile:profile}, null, 2), {mode:0o600});
     renameSync(temp, file);
   } finally { rmSync(temp, {force:true}); }
 }

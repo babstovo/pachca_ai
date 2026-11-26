@@ -132,14 +132,14 @@ host.addEventListener('message', ({ data }) => {
     generation = data.generation; available = data.available; busy = false;
     clearNotes(); $('refresh').disabled = !available;
     if (available) load(false);
-    else message('Для просмотра задач подключите агента в Пачке.');
+    else message('Для просмотра задач подключите OpenProject в настройках «Доска задач».');
     return;
   }
   if (data.type !== 'page' || data.generation !== generation || !busy) return;
   busy = $('refresh').disabled = false;
   if (data.error) { more = false; message(data.error); return; }
   const result = data.result;
-  if (!result.configured) { clearNotes(); message('Добавьте ключ OpenProject в настройках агента.'); return; }
+  if (!result.configured) { clearNotes(); message('Добавьте ключ OpenProject в настройках «Доска задач».'); return; }
   account = result.user.id; page++; more = result.more && result.tasks.length > 0;
   const notes = document.createDocumentFragment();
   for (const task of result.tasks) {

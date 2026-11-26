@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { configuredBoard, parseBoardAddress, saveBoardAddress } from './workspace-settings.mjs';
+import { configuredBoard, parseBoardAddress, preferredBoardProfile, saveBoardAddress } from './workspace-settings.mjs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { clientDataDir, openSession } from './session.mjs';
@@ -115,6 +115,17 @@ export function hasOpenProjectKey(profile, board = configuredBoard()) {
   });
 }
 
+export async function configuredTaskProfile(profiles) {
+  const board = configuredBoard();
+  if (!board) return null;
+  const configured = [];
+  for (const profile of new Set(profiles)) {
+    if (Number.isSafeInteger(profile) && profile > 0 && await hasOpenProjectKey(profile, board)) configured.push(profile);
+  }
+  const preferred = preferredBoardProfile();
+  return configured.includes(preferred) ? preferred : configured.length === 1 ? configured[0] : null;
+}
+
 export async function saveOpenProjectKey(profile, key, address) {
   const board = address === undefined ? requireBoard() : parseBoardAddress(address);
   if (typeof key !== 'string' || !/^[A-Za-z0-9_-]{20,256}$/.test(key)) throw new Error('Вставьте API-ключ из настроек аккаунта OpenProject.');
@@ -131,7 +142,7 @@ export async function saveOpenProjectKey(profile, key, address) {
   } finally {
     await unlink(temp).catch(error => { if (error.code !== 'ENOENT') throw error; });
   }
-  saveBoardAddress(board);
+  saveBoardAddress(board, profile);
   return { configured: true, account: user.name, boardUrl: board.href };
 }
 

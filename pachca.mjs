@@ -80,7 +80,7 @@ async function main() {
     'desktop-participants', 'desktop-participant', 'desktop-save-participant', 'desktop-index-participants', 'desktop-find-participants',
     'desktop-projects', 'desktop-save-projects', 'desktop-codex-projects', 'desktop-models', 'desktop-save-model',
       'desktop-confirmation', 'desktop-dismiss-question',
-    'desktop-openproject-key-state', 'desktop-openproject-key', 'desktop-openproject-remove-key', 'desktop-openproject-status',
+    'desktop-openproject-key-state', 'desktop-openproject-key', 'desktop-openproject-remove-key', 'desktop-openproject-status', 'desktop-task-profile',
     'desktop-task-board', 'desktop-task-workflow', 'desktop-task-update', 'desktop-task-detail',
     'desktop-task-comments', 'desktop-task-fields', 'desktop-task-edit', 'desktop-task-comment',
     'desktop-task-codex-info', 'desktop-task-codex-start', 'desktop-task-codex-open',

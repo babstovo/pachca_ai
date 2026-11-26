@@ -36,6 +36,7 @@ internal sealed partial class PachcaWindow
                 request = Convert.ToInt32(Get(data, "request"));
                 if (!Equals(profile, app.taskProfile)) throw new InvalidOperationException("Пространство изменилось. Откройте доску заново.");
                 data["profile_id"] = profile;
+                data["standalone"] = app.settingsProfile == null;
                 object result;
                 switch (Convert.ToString(Get(data, "action"))) {
                     case "list":

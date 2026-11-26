@@ -54,13 +54,14 @@ internal sealed partial class PachcaWindow
         return value;
     }
 
-    private async Task<long> ChoosePachcaProfile(long preferred)
+    private Task<Dictionary<string,object>> FetchPachcaWorkspaces()
     {
-        var response = await FetchInPachca(new { url = PachcaOrigin + "/api/v3/workspaces", method = "GET" });
-        int status = Convert.ToInt32(Get(response,"status"));
-        if (status == 401 || status == 403) throw new InvalidOperationException("Войдите в аккаунт в основном окне Пачки.");
-        if (status != 200) throw new InvalidOperationException("Пачка не вернула список пространств (HTTP " + status + ").");
-        var data = json.Deserialize<Dictionary<string,object>>(Convert.ToString(Get(response,"body")));
+        return FetchInPachca(new { url = PachcaOrigin + "/api/v3/workspaces", method = "GET" });
+    }
+
+    private Dictionary<long,string> PachcaProfiles(string body)
+    {
+        var data = json.Deserialize<Dictionary<string,object>>(body);
         var profiles = new Dictionary<long,string>();
         foreach (Dictionary<string,object> account in Get(data,"data") as IList ?? new object[0]) {
             foreach (Dictionary<string,object> workspace in Get(account,"workspaces") as IList ?? new object[0]) {
@@ -71,6 +72,16 @@ internal sealed partial class PachcaWindow
                     Convert.ToString(Get(profile,"name") ?? Get(profile,"nickname")) + " (" + id + ")";
             }
         }
+        return profiles;
+    }
+
+    private async Task<long> ChoosePachcaProfile(long preferred)
+    {
+        var response = await FetchPachcaWorkspaces();
+        int status = Convert.ToInt32(Get(response,"status"));
+        if (status == 401 || status == 403) throw new InvalidOperationException("Войдите в аккаунт в основном окне Пачки.");
+        if (status != 200) throw new InvalidOperationException("Пачка не вернула список пространств (HTTP " + status + ").");
+        var profiles = PachcaProfiles(Convert.ToString(Get(response,"body")));
         if (preferred > 0) {
             if (profiles.ContainsKey(preferred)) return preferred;
             throw new InvalidOperationException("Выбранное пространство недоступно в текущем аккаунте Пачки.");
@@ -117,13 +128,41 @@ internal sealed partial class PachcaWindow
 
     private async Task ListenToPachca(CoreWebView2 core)
     {
-        core.WebResourceResponseReceived += (s,e) => {
-            if (worker == null || worker.HasExited || signingOut || changingAgent) return;
+        bool receivedWorkspaces = false;
+        core.NavigationStarting += (s,e) => {
+            if (e.Cancel) return;
+            receivedWorkspaces = false;
+            SetBoardKeyProfile(null);
+        };
+        core.NavigationCompleted += async (s,e) => {
+            if (!e.IsSuccess || !InPachca() || receivedWorkspaces || exiting) return;
+            // Some pages reuse a cached workspace list. Request it for this browser session.
+            try { await FetchPachcaWorkspaces(); } catch (InvalidOperationException) { }
+        };
+        core.WebResourceResponseReceived += async (s,e) => {
             Uri uri;
-            if (e.Response.StatusCode == 401 && Uri.TryCreate(e.Request.Uri,UriKind.Absolute,out uri) &&
-                uri.GetLeftPart(UriPartial.Authority) == PachcaOrigin && uri.AbsolutePath == "/api/v3/workspaces") {
-                workerError = "Сеанс Пачки завершён. Войдите в основном окне и подключите агента.";
-                WriteHost(worker,new { @event = "stop" });
+            if (exiting || !Uri.TryCreate(e.Request.Uri,UriKind.Absolute,out uri) ||
+                uri.GetLeftPart(UriPartial.Authority) != PachcaOrigin || uri.AbsolutePath != "/api/v3/workspaces") return;
+            if (e.Response.StatusCode == 401 || e.Response.StatusCode == 403) {
+                SetBoardKeyProfile(null);
+                if (worker != null && !worker.HasExited && !signingOut && !changingAgent) {
+                    workerError = "Сеанс Пачки завершён. Войдите в основном окне и подключите агента.";
+                    WriteHost(worker,new { @event = "stop" });
+                }
+                return;
+            }
+            if (e.Response.StatusCode != 200 || !InPachca()) return;
+            receivedWorkspaces = true;
+            int revision = ++boardKeyRevision;
+            try {
+                string body;
+                using (var stream = await e.Response.GetContentAsync())
+                using (var reader = new StreamReader(stream)) body = await reader.ReadToEndAsync();
+                var profiles = PachcaProfiles(body);
+                var result = await Request("desktop-task-profile", new { profiles = profiles.Keys.ToArray() });
+                if (!exiting && revision == boardKeyRevision) SetBoardKeyProfile(Get(result,"profile_id"));
+            } catch (Exception) {
+                if (!exiting && revision == boardKeyRevision) SetBoardKeyProfile(null);
             }
         };
         core.GetDevToolsProtocolEventReceiver("Network.webSocketCreated").DevToolsProtocolEventReceived += (s,e) => {

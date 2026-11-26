@@ -17,6 +17,11 @@
 workspace.local.json
 PachcaWebClient/
 /profile/
+/webview2/
+/chatkit-webview2/
+/codex-requests/
+/watch.pipe
+codex-clipboard-*.png
 /openproject-profile*/
 /task-worktrees/
 /agent-link.json

@@ -6,7 +6,8 @@ import { localCodexState, readAgentLink, saveAgentLink, listCodexModels } from '
 import { clientBinding, configureClient, clientEnabled } from './mcp-client.mjs';
 import { normalizeCommunicationProfile } from './communication-profile.mjs';
 import { configuredBoard } from './workspace-settings.mjs';
-import { hasOpenProjectKey, removeOpenProjectKey, saveOpenProjectKey } from './openproject.mjs';
+import { assignedTaskAction, assignedTaskBoard, assignedTaskWorkflow, configuredTaskProfile, hasOpenProjectKey,
+  removeOpenProjectKey, saveOpenProjectKey, updateAssignedTaskStatus } from './openproject.mjs';
 import { readProjects, saveProjects } from './projects.mjs';
 import { clientDataDir } from './session.mjs';
 
@@ -29,6 +30,28 @@ export async function desktop(command) {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   const input = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+  if (command === 'desktop-task-profile') {
+    console.log(JSON.stringify({ profile_id: await configuredTaskProfile(input.profiles) }));
+    return;
+  }
+  if (input.standalone && command.startsWith('desktop-task-')) {
+    const profile = input.profile_id;
+    if (!Number.isSafeInteger(profile) || profile <= 0) throw Error('Выберите пространство Пачки для доски задач.');
+    const action = command.slice('desktop-'.length);
+    let result;
+    switch (action) {
+      case 'task-board': result = await assignedTaskBoard(profile, input); break;
+      case 'task-workflow': result = await assignedTaskWorkflow(profile, input); break;
+      case 'task-update': result = await updateAssignedTaskStatus(profile, input); break;
+      case 'task-detail': case 'task-fields': case 'task-comments': case 'task-edit': case 'task-comment':
+        result = await assignedTaskAction(profile, action, input); break;
+      case 'task-codex-info':
+        result = { repositories: [], selectedFolders: [], message: 'Для работы с проектами Codex подключите агента.' }; break;
+      default: throw Error('Для работы с проектами Codex подключите агента.');
+    }
+    console.log(JSON.stringify(result));
+    return;
+  }
   if (command === 'desktop-available-models') {
     console.log(JSON.stringify({ items: await listCodexModels(), selected: '', effort: '' }));
     return;

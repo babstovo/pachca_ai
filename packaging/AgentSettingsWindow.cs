@@ -124,6 +124,7 @@ internal sealed partial class PachcaWindow
                         keyProfile = 0;
                         keyProfile = await app.ChoosePachcaProfile(Convert.ToInt64(app.settingsProfile));
                         if (keyProfile > 0) result = await app.Request("desktop-openproject-key-state", new { profile_id = keyProfile });
+                        if (result != null && Equals(Get((Dictionary<string,object>)result, "configured"), true)) app.SetBoardKeyProfile(keyProfile);
                         break;
                     case "saveKey":
                     case "removeKey":
@@ -133,6 +134,7 @@ internal sealed partial class PachcaWindow
                         result = action == "saveKey"
                             ? await app.Request("desktop-openproject-key", new { profile_id = keyProfile, boardUrl = Get(data, "boardUrl"), key = Get(data, "key") })
                             : await app.Request("desktop-openproject-remove-key", new { profile_id = keyProfile });
+                        app.SetBoardKeyProfile(action == "saveKey" ? (object)keyProfile : null, true);
                         break;
                     case "loginBoard": await app.Request("openproject-login", new { }); break;
                     case "participants":

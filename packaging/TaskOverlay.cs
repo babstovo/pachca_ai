@@ -91,12 +91,25 @@ internal sealed partial class PachcaWindow
             ShowTaskOverlay(false);
     }
 
-    private void SetTaskProfile(object profile)
+    private object boardKeyProfile;
+    private int boardKeyRevision;
+
+    private void SetBoardKeyProfile(object profile, bool reload = false)
     {
-        if (Equals(taskProfile, profile)) return;
+        boardKeyRevision++;
+        boardKeyProfile = profile;
+        RefreshTaskProfile(reload);
+    }
+
+    private void RefreshTaskProfile(bool reload = false)
+    {
+        object profile = settingsProfile ?? boardKeyProfile;
+        if (profile != null) profile = Convert.ToInt64(profile);
+        if (!reload && Equals(taskProfile, profile)) return;
         taskProfile = profile;
         if (taskOverlay != null) taskOverlay.ResetProfile();
         else RestoreTaskOverlay();
+        UpdateSend();
     }
 
     private void OpenTaskOverlay()
@@ -357,7 +370,7 @@ internal sealed partial class PachcaWindow
             if (action != "list") return;
             try {
                 var result = await app.Request("desktop-task-board", new { profile_id = app.taskProfile,
-                    offset = Get(data, "offset"), account_id = Get(data, "account_id"), closed = false });
+                    offset = Get(data, "offset"), account_id = Get(data, "account_id"), closed = false, standalone = app.settingsProfile == null });
                 if (requested == generation) Post(new { type = "page", generation, result });
             } catch (Exception ex) {
                 if (requested == generation) Post(new { type = "page", generation, error = ex.Message });
