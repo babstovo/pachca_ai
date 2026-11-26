@@ -35,6 +35,7 @@ main { min-width: 0; max-width: 100%; }
 </style></head><body>
 <aside aria-label="Управление стикерами">
   <button id="refresh" aria-label="Обновить задачи" title="Обновить задачи" disabled>↻</button>
+  <button id="openBoard" aria-label="Открыть доску в браузере" title="Открыть доску в браузере" disabled>+</button>
   <button id="close" aria-label="Закрыть" title="Закрыть стикеры">×</button>
 </aside>
 <main>
@@ -97,6 +98,7 @@ function clearNotes() {
 function load() {
   if (!available || busy) return;
   busy = $('refresh').disabled = true;
+  $('openBoard').disabled = true;
   board = null; clearNotes();
   message('Загружаем задачи…');
   send('list');
@@ -141,6 +143,7 @@ host.addEventListener('message', ({ data }) => {
   if (data.type === 'context') {
     generation = data.generation; available = data.available; busy = false; board = pendingFilter = null;
     clearNotes(); $('refresh').disabled = !available;
+    $('openBoard').disabled = true;
     if (available) load();
     else message('Для просмотра задач подключите OpenProject в настройках «Доска задач».');
     return;
@@ -156,10 +159,12 @@ host.addEventListener('message', ({ data }) => {
   const result = data.result;
   if (!result.configured) { clearNotes(); message('Добавьте ключ OpenProject в настройках «Доска задач».'); return; }
   board = result;
+  $('openBoard').disabled = !board.boardUrl;
   filterNotes(pendingFilter && pendingFilter.boardUrl === board.boardUrl ? pendingFilter.selected : board.selected);
   pendingFilter = null;
 });
 $('refresh').onclick = load;
+$('openBoard').onclick = () => send('open-board');
 $('close').onclick = () => send('close');
 let press = null, suppressClick = false;
 document.addEventListener('pointerdown', event => {

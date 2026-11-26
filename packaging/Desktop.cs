@@ -194,7 +194,7 @@ internal sealed partial class PachcaWindow : Form
             if (wasMinimized && !minimized) RestoreTaskOverlay();
             wasMinimized = minimized;
         };
-        poll.Tick += async (s, e) => await Task.WhenAll(RefreshState(), CheckLocalCodex());
+        poll.Tick += async (s, e) => await Task.WhenAll(RefreshState(), CheckLocalCodex(), RefreshUnreadBadge());
         Shown += async (s, e) => {
             UpdateSend();
             poll.Start();

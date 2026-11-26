@@ -138,6 +138,7 @@ internal sealed partial class PachcaWindow
     private sealed class TaskOverlay : ResourceWindow
     {
         private int generation;
+        private Uri loadedBoard;
         private Point gestureStart;
         private Rectangle gestureBounds;
         private bool resizing;
@@ -323,6 +324,7 @@ internal sealed partial class PachcaWindow
         public void ResetProfile()
         {
             generation++;
+            loadedBoard = null;
             PublishContext();
         }
 
@@ -350,6 +352,10 @@ internal sealed partial class PachcaWindow
             if (action == "move" || action == "resize") { StartGesture(action == "resize", data); return; }
             int requested = Convert.ToInt32(Get(data, "generation"));
             if (requested != generation || app.taskProfile == null || app.signingOut || app.exiting) return;
+            if (action == "open-board") {
+                if (loadedBoard != null) app.OpenInBrowser(loadedBoard);
+                return;
+            }
             if (action == "open-task") {
                 long id;
                 if (!long.TryParse(Convert.ToString(Get(data, "id")), out id) || id <= 0) return;
@@ -373,9 +379,17 @@ internal sealed partial class PachcaWindow
                 return;
             }
             if (action != "list") return;
+            loadedBoard = null;
             try {
                 var result = await app.Request("desktop-overlay-board", new { profile_id = app.taskProfile });
-                if (requested == generation) Post(new { type = "page", generation, result });
+                if (requested == generation) {
+                    Uri board;
+                    if (Equals(Get(result, "configured"), true) && Uri.TryCreate(Get(result, "boardUrl") as string, UriKind.Absolute, out board)
+                        && board.Scheme == Uri.UriSchemeHttps && board.UserInfo.Length == 0
+                        && System.Text.RegularExpressions.Regex.IsMatch(board.AbsolutePath, @"^/projects/[^/]+/boards/[1-9][0-9]*$"))
+                        loadedBoard = board;
+                    Post(new { type = "page", generation, result });
+                }
             } catch (Exception ex) {
                 if (requested == generation) Post(new { type = "page", generation, error = ex.Message });
             }

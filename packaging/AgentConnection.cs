@@ -132,6 +132,7 @@ internal sealed partial class PachcaWindow
         core.NavigationStarting += (s,e) => {
             if (e.Cancel) return;
             receivedWorkspaces = false;
+            SetUnreadProfiles(new long[0]);
             SetBoardKeyProfile(null);
         };
         core.NavigationCompleted += async (s,e) => {
@@ -144,6 +145,7 @@ internal sealed partial class PachcaWindow
             if (exiting || !Uri.TryCreate(e.Request.Uri,UriKind.Absolute,out uri) ||
                 uri.GetLeftPart(UriPartial.Authority) != PachcaOrigin || uri.AbsolutePath != "/api/v3/workspaces") return;
             if (e.Response.StatusCode == 401 || e.Response.StatusCode == 403) {
+                SetUnreadProfiles(new long[0]);
                 SetBoardKeyProfile(null);
                 if (worker != null && !worker.HasExited && !signingOut && !changingAgent) {
                     workerError = "Сеанс Пачки завершён. Войдите в основном окне и подключите агента.";
@@ -159,6 +161,8 @@ internal sealed partial class PachcaWindow
                 using (var stream = await e.Response.GetContentAsync())
                 using (var reader = new StreamReader(stream)) body = await reader.ReadToEndAsync();
                 var profiles = PachcaProfiles(body);
+                if (exiting || revision != boardKeyRevision) return;
+                SetUnreadProfiles(profiles.Keys.OrderBy(id => id).ToArray());
                 var result = await Request("desktop-task-profile", new { profiles = profiles.Keys.ToArray() });
                 if (!exiting && revision == boardKeyRevision) SetBoardKeyProfile(Get(result,"profile_id"));
             } catch (Exception) {
@@ -176,11 +180,14 @@ internal sealed partial class PachcaWindow
             pachcaSockets.Remove(Convert.ToString(Get(info,"requestId")));
         };
         core.GetDevToolsProtocolEventReceiver("Network.webSocketFrameReceived").DevToolsProtocolEventReceived += (s,e) => {
-            if (worker == null || worker.HasExited || !connected || !InPachca()) return;
+            if (!InPachca() || exiting) return;
             var info = json.Deserialize<Dictionary<string,object>>(e.ParameterObjectAsJson);
             if (!pachcaSockets.Contains(Convert.ToString(Get(info,"requestId")))) return;
             var frame = Get(info,"response") as Dictionary<string,object>;
             var payload = Get(frame,"payloadData") as string;
+            if (payload != null && payload.StartsWith("42") && (payload.Contains("message.") || payload.Contains("read")))
+                RequestUnreadRefresh();
+            if (worker == null || worker.HasExited || !connected) return;
             if (payload != null && payload.StartsWith("42") && payload.Contains("message.created"))
                 WriteHost(worker,new { @event = "activity", payload });
         };
