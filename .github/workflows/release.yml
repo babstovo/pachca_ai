@@ -2,6 +2,12 @@ name: Windows portable release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -9,23 +15,29 @@ permissions:
 jobs:
   release:
     runs-on: windows-2022
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ format('refs/tags/{0}', inputs.tag || github.ref_name) }}
           fetch-depth: 0
       - name: Check release version
         shell: pwsh
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag and package version differ.' }
-          $tag = "refs/tags/$env:GITHUB_REF_NAME"
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $env:RELEASE_TAG -cne "v$version") { throw 'Tag and package version differ.' }
+          $tag = 'refs/release/annotation'
+          git fetch --no-tags origin "refs/tags/${env:RELEASE_TAG}:$tag"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the release tag.' }
           if ((git cat-file -t $tag) -ne 'tag') { throw 'Create an annotated tag describing the changes in this version.' }
+          if ((git rev-parse "${tag}^{commit}") -ne (git rev-parse HEAD)) { throw 'Tag and checked-out commit differ.' }
           $changes = (git for-each-ref '--format=%(contents)' $tag | Out-String).Trim()
           $signature = (git for-each-ref '--format=%(contents:signature)' $tag | Out-String).Trim()
           if ($signature -and $changes.EndsWith($signature)) {
             $changes = $changes.Substring(0, $changes.Length - $signature.Length).TrimEnd()
           }
-          if (!$changes -or $changes -eq $env:GITHUB_REF_NAME) { throw 'Add release notes to the tag annotation.' }
+          if (!$changes -or $changes -eq $env:RELEASE_TAG) { throw 'Add release notes to the tag annotation.' }
           $install = 'Скачайте Pachca-AI-win-portable-x64.exe и запустите его. Новые версии доступны через кнопку обновления в шапке клиента.'
           @($changes, '', $install) | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'release-notes.md') -Encoding utf8NoBOM
       - name: Build portable executable
@@ -42,4 +54,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME dist/Pachca-AI-win-portable-x64.exe --verify-tag --title "Пачка AI $env:GITHUB_REF_NAME" --notes-file (Join-Path $env:RUNNER_TEMP 'release-notes.md')
+          gh release create $env:RELEASE_TAG dist/Pachca-AI-win-portable-x64.exe --verify-tag --title "Пачка AI $env:RELEASE_TAG" --notes-file (Join-Path $env:RUNNER_TEMP 'release-notes.md')
