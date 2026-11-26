@@ -668,7 +668,8 @@ async function readColumn(get, widget, userId) {
   const matches = [];
   let read = 0;
   for (let offset = 1; ; offset++) {
-    const query = await get(`/api/v3/queries/${queryId}`, {pageSize:100, offset});
+    // OpenProject pins manually ordered queries to their first page.
+    const query = await get(`/api/v3/queries/${queryId}`, {pageSize:100, offset, sortBy:JSON.stringify([['id', 'asc']])});
     const page = query._embedded?.results;
     const cards = page?._embedded?.elements;
     if (!Array.isArray(cards)) throw new Error('OpenProject не вернул карточки колонки.');

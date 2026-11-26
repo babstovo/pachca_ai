@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { openDashboard } from './dashboard.mjs';
-import { callWatcher } from './watch-pipe.mjs';
+import { callWatcher, desktopChatVersion } from './watch-pipe.mjs';
 import { localCodexState, readAgentLink, saveAgentLink, listCodexModels } from './codex.mjs';
 import { clientBinding, configureClient, clientEnabled } from './mcp-client.mjs';
 import { normalizeCommunicationProfile } from './communication-profile.mjs';
@@ -14,7 +14,7 @@ import { clientDataDir } from './session.mjs';
 export async function desktop(command) {
   if (command === 'desktop-start' || command === 'desktop-resume') {
     const active = (await callWatcher({ command: 'watch-status' }))?.data;
-    if (active?.desktop_chat_version === 44) return;
+    if (active?.desktop_chat_version === desktopChatVersion) return;
     if (active?.running) {
       await callWatcher({ command: 'stop-watch' });
       for (let attempt = 0; attempt < 40; attempt++) {
@@ -74,7 +74,7 @@ export async function desktop(command) {
     }
     const save = command === 'desktop-openproject-key';
     const watcher = (await callWatcher({command:'watch-status'}))?.data;
-    if (watcher?.profile_id === profile && watcher.desktop_chat_version === 44) {
+    if (watcher?.profile_id === profile && watcher.desktop_chat_version === desktopChatVersion) {
       const reply = await callWatcher({command:save ? 'openproject-save-key' : 'openproject-remove-key', values:input});
       if (reply) { console.log(JSON.stringify(reply.data)); return; }
     }

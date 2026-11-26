@@ -440,7 +440,12 @@ internal sealed partial class PachcaWindow : Form
             if (exiting) return;
             SetCodexState(Convert.ToString(Get(result, "state")));
             feedback.Text = "";
-            if (codexState == "missing") OpenCodexDownload();
+            if (codexState == "missing") {
+                string detail = Get(result, "detail") as string ?? "Пачка не нашла Codex на этом компьютере.";
+                if (MessageBox.Show(this, detail + "\n\nОткрыть страницу установки Codex?", "Подключение агента",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes) OpenCodexDownload();
+                throw new InvalidOperationException(detail);
+            }
         } catch (Exception error) {
             if (!exiting) {
                 SetCodexState("error");

@@ -59,7 +59,7 @@ export async function clientEnabled(link) {
   if (link?.binding) return registration(link,'check');
   try { return await codexMcpEnabled(); }
   catch (error) {
-    if (error.code === 'CODEX_NOT_INSTALLED') return false;
+    if (error.code === 'CODEX_NOT_INSTALLED' || error.code === 'CODEX_UNAVAILABLE') return false;
     throw error;
   }
 }

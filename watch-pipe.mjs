@@ -5,6 +5,8 @@ import { createConnection, createServer } from 'node:net';
 import { join } from 'node:path';
 import { clientDataDir } from './session.mjs';
 
+export const desktopChatVersion = 46;
+
 const commands = new Set(['activity-list','activity-cancel','participants', 'participant', 'save-participant', 'index-participants', 'profiles', 'folders', 'chats', 'search', 'message', 'history', 'thread', 'send', 'questions', 'answer-question', 'draft-question', 'delegate-question', 'communication-profile', 'save-communication-profile', 'compose-prepare', 'compose-read', 'compose-send', 'logout', 'auto-reply-setting',
   'project-settings', 'save-project-settings', 'codex-projects','codex-models', 'save-codex-model',
   'send-confirmation', 'dismiss-question', 'review-incoming-draft', 'find-participants',

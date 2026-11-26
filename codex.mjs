@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join } from 'node:path';
@@ -11,6 +11,23 @@ const serverKey = 'mcp_servers.pachca_local';
 export const reasoningEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 let lastCodex;
+
+function* desktopCliFiles(bin) {
+  yield join(bin, 'codex.exe');
+  let folders;
+  try { folders = readdirSync(bin, {withFileTypes:true}); }
+  catch { return; }
+  const versions = [];
+  for (const folder of folders) {
+    if (!folder.isDirectory()) continue;
+    const path = join(bin, folder.name);
+    try { versions.push({file:join(path, 'codex.exe'), updated:statSync(path).mtimeMs}); }
+    catch { /* A Desktop update may have removed this version. */ }
+  }
+  versions.sort((a, b) => b.updated - a.updated);
+  for (const version of versions) yield version.file;
+}
+
 export function findCodex() {
   if (lastCodex && existsSync(lastCodex)) return lastCodex;
   const seen = new Set();
@@ -18,23 +35,36 @@ export function findCodex() {
   function runnable(file) {
     if (!file || !isAbsolute(file) || basename(file).toLowerCase() !== 'codex.exe' || seen.has(file.toLowerCase()) || !existsSync(file)) return false;
     seen.add(file.toLowerCase());
-    const probe = spawnSync(file, ['--version'], {encoding:'utf8', windowsHide:true, timeout:5000});
+    const probe = spawnSync(file, ['--version'], {encoding:'utf8', windowsHide:true, timeout:15000});
     if (probe.status === 0 && /^codex-cli\s/im.test(probe.stdout)) return true;
     if (probe.error) failure = {file, code:probe.error.code};
     return false;
   }
   const runtime = process.env.CODEX_APP_RUNTIME_CLI_PATH;
   if (runnable(runtime)) return lastCodex = runtime;
+  if (process.env.LOCALAPPDATA) {
+    const bin = join(process.env.LOCALAPPDATA, 'OpenAI', 'Codex', 'bin');
+    for (const file of desktopCliFiles(bin)) {
+      if (runnable(file)) return lastCodex = file;
+    }
+  }
+  for (const home of [process.env.CODEX_HOME, process.env.USERPROFILE && join(process.env.USERPROFILE, '.codex')]) {
+    if (!home) continue;
+    const file = join(home, 'bin', 'codex.exe');
+    if (runnable(file)) return lastCodex = file;
+  }
   const where = spawnSync('where.exe', ['codex'], { encoding:'utf8', windowsHide:true, timeout:5000 });
   for (const path of (where.stdout ?? '').trim().split(/\r?\n/).filter(Boolean)) {
     if (runnable(path)) return lastCodex = path;
     if (!/\.cmd$/i.test(path)) continue;
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-    const vendor = join('vendor', (arch === 'arm64' ? 'aarch64' : 'x86_64') + '-pc-windows-msvc', 'codex', 'codex.exe');
+    const vendor = join('vendor', (arch === 'arm64' ? 'aarch64' : 'x86_64') + '-pc-windows-msvc');
     const pkg = join(dirname(path), 'node_modules', '@openai', 'codex');
     for (const root of [pkg, join(pkg, 'node_modules', '@openai', 'codex-win32-' + arch), join(dirname(pkg), 'codex-win32-' + arch)]) {
-      const file = join(root, vendor);
-      if (runnable(file)) return lastCodex = file;
+      for (const folder of ['bin', 'codex']) {
+        const file = join(root, vendor, folder, 'codex.exe');
+        if (runnable(file)) return lastCodex = file;
+      }
     }
   }
   const app = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
@@ -48,7 +78,11 @@ export function findCodex() {
       if (runnable(installed)) return lastCodex = installed;
     }
   }
-  if (failure) throw new Error(`Windows не смогла запустить Codex CLI (${failure.code}): ${failure.file}. Проверьте доступ к файлу или установите рабочую копию Codex CLI.`);
+  if (failure) {
+    const error = new Error(`Windows не смогла запустить найденный Codex CLI (${failure.code}): ${failure.file}.`);
+    error.code = 'CODEX_UNAVAILABLE';
+    throw error;
+  }
   if (app.error || app.status !== 0 || seen.size)
     throw new Error('Не удалось определить путь к Codex. Повторите проверку подключения.');
   const error = new Error('Не найден исполняемый файл Codex в PATH и установленных приложениях Windows.');
@@ -78,10 +112,11 @@ export async function localCodexState({ connect = false, locate = findCodex } = 
   try { executable = locate(); }
   catch (error) {
     if (error.code === 'CODEX_NOT_INSTALLED') return { state: 'missing' };
+    if (error.code === 'CODEX_UNAVAILABLE') return { state: 'missing', detail:error.message };
     throw error;
   }
   const status = async () => {
-    const { code, output } = await runLogin(executable, ['login', 'status'], 10_000, true);
+    const { code, output } = await runLogin(executable, ['login', 'status'], 30_000, true);
     if (code === 0) return { state: 'ready' };
     if (/not logged in|no (?:active )?(?:login|credentials)/i.test(output)) return { state: 'signed-out' };
     throw new Error('Не удалось проверить вход в Codex. Откройте Codex и проверьте аккаунт.');

@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 import { positiveInteger, runPachca, selectProfile, useSession } from './client.mjs';
 import { findCodex, listCodexModels, localCodexState } from './codex.mjs';
 import { clientDataDir, openSession, webRequest, workspaces } from './session.mjs';
-import { serveWatcher } from './watch-pipe.mjs';
+import { serveWatcher, desktopChatVersion } from './watch-pipe.mjs';
 import { participantDirectory, findParticipants, indexParticipants, refreshParticipantPortrait } from './participant-directory.mjs';
 import { watchLog } from './watch-log.mjs';
 import { activityJournal, activityPersonName, readActivityDestinations, sendWithJournal } from './activity-journal.mjs';
@@ -1562,7 +1562,7 @@ export async function watchPachca(requestedProfile, { decide = decideWithCodex, 
     }
     closePipe = await serveWatcher(
       execute,
-      () => signingOut ? { running: true, connected: false } : ({ running: true, connected: Boolean(connectedSocket), profile_id: profileId, panel_notes:panelNotes, logs: true, auto_reply: autoEnabled, desktop: true, codex_bridge: true, draft_editor: true, delegated_replies: true, communication_profile: true, casual_replies: true, compose: true, participant_index: indexing || indexProgress?.until > Date.now() ? indexProgress : undefined, activity:journal.head(), desktop_chat_version: 44, desktop_host: Boolean(host), model: projects.model, task_board: true, confirmation_required: projects.confirmSend }),
+      () => signingOut ? { running: true, connected: false } : ({ running: true, connected: Boolean(connectedSocket), profile_id: profileId, panel_notes:panelNotes, logs: true, auto_reply: autoEnabled, desktop: true, codex_bridge: true, draft_editor: true, delegated_replies: true, communication_profile: true, casual_replies: true, compose: true, participant_index: indexing || indexProgress?.until > Date.now() ? indexProgress : undefined, activity:journal.head(), desktop_chat_version: desktopChatVersion, desktop_host: Boolean(host), model: projects.model, task_board: true, confirmation_required: projects.confirmSend }),
       stop,
       log.read,
     );
